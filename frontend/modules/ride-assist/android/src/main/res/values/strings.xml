@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rideassist_accessibility_description">Reads ride request details from your driver app screens to fill in missing fare and distance data. Never used to tap buttons or read other apps.</string>
+</resources>

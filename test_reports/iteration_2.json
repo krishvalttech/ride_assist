@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 2 frontend-only retest of the RideAssist web preview (390x844, Playwright, 5 runs, Jest skipped as requested). All 6 fixes from iteration 1 were verified. (1) Export copies redacted JSON to the clipboard (2076 chars, schemaVersion 1) and shows the toast 'Redacted diagnostics copied to clipboard'. (2) Package id saves on blur, on Enter/submit and on Done, persists after reload (com.test.oladone), and an invalid id shows an error toast. (3) Done on /filters and on /platform/ola, and Save on /filters, all go to /settings when the page is loaded directly. /platform/foo shows 'Unknown platform', and its back button goes to /settings. (4) A duplicate notification (observationCount 2) leaves expiresAt at detectedAt+45000ms, and the ride expires on time. (5) A ride still in ACCEPT_REQUESTED after its expiry (max age 10s, evidence delayed) is not swept to Expired and correctly ends as Accepted with the toast 'Acceptance confirmed'. A forced Failed ride shows request-failed-reason, also after reload. (6) Tabs render on web with the expo-router/native-tabs import. Minor items also verified: separate start/end hour steppers (07->08, 23->22, saved and persisted), human labels on required-field chips, warning toast for the Auto chip, immediate 'Requesting acceptance (simulated)…' toast, a single 'Acceptance assistance' label, and an 'Installed' row. Regression checks passed: simulation feed, accept, dismiss (-> Rejected), Rejected filter, filters save and reset (with confirm), persistence across reload, duplicates metric = 1, OTP 482113 never stored, tab navigation. No page errors. Only small leftover issues (touch target sizes, no in-flight state on the Accept button, edge cases).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Platform package id input", "issue": "After an invalid id the input keeps the invalid text (it does not revert to the saved value). Tapping Done then shows the error toast and leaves the screen, so the user's edit is silently dropped. Consider reverting the input to config.packageName on an invalid commit, or blocking Done. Reference: app/platform/[id].tsx:51-56,102-106", "testID": "platform-package-input-<p>", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Requests", "issues": ["Filter chips (requests-filter-chip-*) and the Rule checks toggle (request-details-toggle-*) are still 36px tall, below the 44px minimum", "The Accept button is still not disabled and shows no spinner for the ~600ms before the 'Accept requested' state. The immediate toast helps, but the button looks tappable."]},
+      {"screen": "Filters", "issues": ["Hour stepper buttons (filters-dec/inc-startHour/endHour) are 36x36, and the required-field and mode chips are 36px tall, all below 44px", "Category chips are still lowercase ('rapido · bike')"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "LOW: on an invalid package id, revert the input to the saved value (or keep the user on the screen when Done is tapped) - app/platform/[id].tsx",
+    "LOW: raise chips, the Rule checks toggle and the hour steppers to a minimum height of 44 (hitSlop or minHeight)",
+    "LOW: disable the Accept button or show a spinner while acceptanceManager.inFlight has the ride",
+    "LOW: ACCEPT_REQUESTED is now excluded from sweepExpiry, but collectEvidence has no timeout. If a real (native) provider never resolves, the ride stays in 'Accept requested' forever. Add a timeout that moves it to UNKNOWN - src/services/acceptance.ts:163-170",
+    "LOW: restart recovery (rideStore.ts:160-163) still turns UNKNOWN rides into EXPIRED, which does not match the sweep rule that UNKNOWN is never silently expired. Consider keeping UNKNOWN as it is on recovery."
+  ],
+  "critical_code_review_comments": [
+    "commitPackageName runs on both onBlur and Done, and the second run can use a stale config.packageName. In testing only one toast showed, so no visible issue.",
+    "collectEvidence has no timeout around provider.getAcceptanceEvidence. Together with ACCEPT_REQUESTED being skipped by sweepExpiry, a ride can get stuck if the provider never resolves.",
+    "No deprecated Expo packages (expo-av, expo-barcode-scanner, expo-background-fetch) found in package.json. The tabs import now uses expo-router/native-tabs."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (no backend)", "frontend": "100% of the requested retest items pass (6/6 fixes, all minor items, core regression)"},
+  "seed_data_creation": "None. Simulation Mode only; each browser context starts with empty localStorage.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Every browser_automation call starts fresh (empty localStorage). Grant the clipboard permission with page.context.grant_permissions(['clipboard-read','clipboard-write'], origin=BASE) to check Export. To force a Failed outcome use Math.random=()=>0.99; for success use 0.01. To test the ACCEPT_REQUESTED-past-expiry path, set filters-input-maxRequestAgeSec to 10, tap Accept at about 8.5s, and wrap window.setTimeout so 1000ms delays become 8000ms. Simulator order: good-cab and low-fare fire at once, then one every 8s; the Ola Rs310 (great-per-km) arrives at about 32s and its duplicate at about 56s. The localStorage key rideassist_rides_v1 is double JSON-encoded.",
+  "rca_of_issue": ""
+}

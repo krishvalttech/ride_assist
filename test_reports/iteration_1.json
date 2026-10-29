@@ -1,0 +1,50 @@
+{
+  "summary": "Frontend-only test of RideAssist web preview (390x844, Playwright, 10 runs). Most requested flows work: SIM PREVIEW pill, 6 metric cards, Start/Stop toggle, Simulation Mode (2 events right away, then one every 8s, all SIMULATED), honest missing-field display ('Fare not detected', '—', never 0), rejection reasons, state pills, filter chips, accept flow (Awaiting -> Accept requested at about 600ms -> Accepted/Failed at about 1.6s, with toast and double-tap guard), Failed path (forced via Math.random), Dismiss -> Rejected, Rule checks expand/collapse, expiry -> Expired, duplicate suppression metric, OTP/unrelated notifications ignored (482113 never shown in UI or localStorage), history stats/log/filter chips, delete local data, platform screen toggles/categories, filters steppers/validation/save/reset, minFare change affecting later decisions, persistence across reload, and recovery of overdue requests as Expired. No page errors and no horizontal overflow. Issues: Export fails on web; the platform package-id edit is not saved on web; Done does nothing when the screen is deep-linked or reloaded; a duplicate notification resets request expiry; small touch targets and labels. Deprecated import found: expo-router/unstable-native-tabs.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "History Export", "issue": "Tapping Export always shows toast 'Could not export diagnostics on this device' on web. Share.share() needs navigator.share, which is missing on desktop/headless browsers. Needs a web fallback (clipboard or Blob download). Reference: app/(tabs)/history.tsx:48-56", "testID": "history-export-button", "priority": "MEDIUM"},
+      {"component": "Platform package id input", "issue": "Edited package id is not saved on web. It only saves through onEndEditing, which RN-web does not fire on blur. After fill + blur, localStorage still has com.olacabs.driver and the value resets after reload. On native it can also be lost if the user taps Done without blurring. Use onBlur/onSubmitEditing and also save on Done/unmount. Reference: app/platform/[id].tsx:120", "testID": "platform-package-input-<p>", "priority": "MEDIUM"},
+      {"component": "Done links (platform/filters)", "issue": "Done calls router.back() with no fallback. On a deep link or after reloading /platform/ola or /filters there is no history, so Done does nothing and the user is stuck (no tab bar). Use router.canGoBack() ? back() : replace('/settings'). Reference: app/platform/[id].tsx:86, app/filters.tsx:115,132", "testID": "platform-close / filters-close", "priority": "MEDIUM"},
+      {"component": "Platform route", "issue": "An invalid id (/platform/foo) silently shows the Rapido screen instead of a not-found/redirect.", "testID": "platform-screen-<p>", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Duplicate suppression vs max request age", "issue": "A duplicate observation resets expiresAt = now + maxRequestAgeSec. This extends a request past the original max age (seen: Ola Rs310 still 'Awaiting approval' more than 45s after first detection because of the duplicate). It should keep the original expiresAt (based on first postedAt). Reference: src/services/rideStore.ts:297", "affected_testIDs": ["request-state-<id>"]},
+      {"flow": "Acceptance evidence vs expiry race", "issue": "collectEvidence ignores the return value of rideStore.transition('ACCEPTED'/'FAILED'). If sweepExpiry expires the ride while it is in ACCEPT_REQUESTED (it is non-terminal), the toast still says 'Acceptance confirmed' while the card shows Expired. Check the transition result, and consider excluding ACCEPT_REQUESTED from expiry. Reference: src/services/acceptance.ts:171-183, rideStore.ts:437-449", "affected_testIDs": ["request-accept-<id>"]}
+    ],
+    "design_issues": [
+      {"screen": "Requests", "issues": ["Filter chips (requests-filter-chip-*) and the 'Rule checks' toggle are 36px tall, below the 44px minimum touch target", "No feedback for about 600ms after tapping Accept: the button is not disabled and shows no spinner, and the toast only appears once the outcome is final. A second tap shows 'already being handled'.", "Failed card shows no failure reason on the card itself (only in the toast/expanded checks)", "Stale request card shows postedAt time (15:18:05), while other cards show detection time, which is inconsistent"]},
+      {"screen": "Dashboard", "issues": ["Duplicates suppressed value '0' has very low contrast (near-invisible dark grey on dark card)"]},
+      {"screen": "History", "issues": ["Avg detection latency (about 10042 ms) is skewed by the simulated stale scenario's -90s postedAt offset. Consider excluding simulated stale offsets from the latency stats."]},
+      {"screen": "Filters", "issues": ["Required-field chips show raw keys 'pickupDistanceKm' and 'tripDistanceKm' instead of human labels", "Operating hours has only 2 buttons ('-' moves startHour earlier, '+' moves endHour later), so start cannot be moved later or end earlier. '+' wraps 23 -> 00, which reads as '05:00 – 00:00' and is ambiguous.", "Choosing Auto mode in filters shows no warning toast (Settings does), which is inconsistent", "Category chips read in lowercase as 'rapido · bike'"]},
+      {"screen": "Platform detail", "issues": ["'Installed on this device' label runs into the value 'Unknown (needs standalone build)' with no gap", "'Acceptance assistance' heading is repeated (card title and toggle label)"]}
+    ],
+    "react_native_issues": [
+      {"component": "NativeTabs import", "issue": "Uses deprecated 'expo-router/unstable-native-tabs'; Metro warns to use 'expo-router/native-tabs'. Reference: app/(tabs)/_layout.tsx:3"}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_1.json"],
+  "action_items": [
+    "Change the import in app/(tabs)/_layout.tsx:3 from 'expo-router/unstable-native-tabs' to 'expo-router/native-tabs' (deprecated API)",
+    "Add a web fallback for Export (Clipboard or Blob download when Platform.OS==='web' or navigator.share is unavailable)",
+    "Save the platform package id with onBlur/onSubmitEditing and also save on Done/unmount (app/platform/[id].tsx:120)",
+    "Done buttons: use router.canGoBack() ? router.back() : router.replace('/settings') in platform/[id].tsx and filters.tsx",
+    "Do not extend expiresAt on duplicate observations (rideStore.ts:297)",
+    "In acceptance.collectEvidence, check the transition result before reporting success. Consider not expiring rides in ACCEPT_REQUESTED.",
+    "Raise filter chips and the Rule checks toggle to at least 44px tall. Disable the Accept button or show a spinner while the request is in flight.",
+    "Show human labels for required-field chips. Provide separate +/- controls for start and end hour.",
+    "Optional: redirect or show not-found for an invalid /platform/:id"
+  ],
+  "critical_code_review_comments": [
+    "rideStore.ts is 593 lines, close to the 700-line limit",
+    "localStorage values are double JSON-encoded (string inside a string). It works but is unusual.",
+    "Simulated acceptance toast fires only after the whole flow ends (about 1.6s)"
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (no backend used)", "frontend": "~88% (core flows pass; export, package-id save and deep-link Done fail)"},
+  "seed_data_creation": "None. Each Playwright run used a fresh browser context, and localStorage was edited only to force expiry for the reload-recovery test.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Each browser_automation call is a fresh context (empty localStorage). Test persistence with page.reload() in the same script. localStorage keys rideassist_*_v1 are double JSON-encoded. Force the Failed acceptance path with page.evaluate('Math.random = () => 0.99') before tapping Accept. Simulator order: good-cab, low-fare, missing-fare, far-pickup, short-trip, great-per-km, low-confidence, stale, duplicate, otp, app-noise, bike-good. The first two fire immediately, then one every 8s. Toast testID = 'toast'. Switch state is read via the inner input.checked (aria-checked is null).",
+  "rca_of_issue": "Export: RN-web Share.share depends on navigator.share. Package id: onEndEditing is not supported by RN-web TextInput. Done stuck: router.back() with an empty history stack. Expiry extension: the duplicate branch recomputes expiresAt from now."
+}

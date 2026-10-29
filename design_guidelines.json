@@ -1,0 +1,160 @@
+{
+  "app_name": "RideAssist",
+  "personality": "7 Dark-First Utility DARK",
+  "personality_one_liner": "A high-performance dark tactical utility command center built for Indian ride-hailing drivers to monitor and evaluate live requests instantly.",
+  "color": {
+    "surface": "#121418",
+    "onSurface": "#F0F2F5",
+    "surfaceSecondary": "#1A1D24",
+    "onSurfaceSecondary": "#C5CBD3",
+    "surfaceTertiary": "#222630",
+    "onSurfaceTertiary": "#8F98A8",
+    "surfaceInverse": "#FFFFFF",
+    "onSurfaceInverse": "#121418",
+    "brand": "#FF6B00",
+    "brandPrimary": "#FF6B00",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#E05E00",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "rgba(255, 107, 0, 0.15)",
+    "onBrandTertiary": "#FF8C38",
+    "success": "#10B981",
+    "onSuccess": "#FFFFFF",
+    "warning": "#F59E0B",
+    "onWarning": "#121418",
+    "error": "#EF4444",
+    "onError": "#FFFFFF",
+    "info": "#3B82F6",
+    "onInfo": "#FFFFFF",
+    "border": "#2A2F3D",
+    "borderStrong": "#3E4658",
+    "divider": "#1F2430",
+    "muted": "#7C879B",
+    "onBrand": "#FFFFFF"
+  },
+  "typography": {
+    "displayFontFamily": "BarlowCondensed_700Bold",
+    "textFontFamily": "Satoshi_400Regular",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous comfortable padding with compact tactical widgets for quick glanceability while parked or moving.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": 0,
+  "navigation": "bottom_tabs",
+  "icon_set": "MaterialCommunityIcons",
+  "glassmorphism": {
+    "enabled": false,
+    "do's": [
+      "Use high contrast tonal surfaces and clear dividers for maximum clarity in dark environments"
+    ],
+    "dont's": [
+      "Avoid heavy blurs that impair glanceability in bright sunlight or dark night driving"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Dashboard",
+      "purpose": "Monitor service status, connected platforms, daily detection metrics, and Start/Stop monitoring toggle.",
+      "states": {
+        "loading": "Centered dark spinner with tactical amber status indicator",
+        "empty": "No detection activity today. Tap Start Monitoring or Simulation Mode to begin.",
+        "error": "Notification access listener disconnected. Tap Retry to rebind."
+      },
+      "layout": "Sticky header with service status pill, quick toggle master switch card, live metrics 2x2 grid, active platforms status list, and recent requests ticker."
+    },
+    {
+      "name": "Platforms",
+      "purpose": "Configure per-platform integration for Rapido, Uber, and Ola with permission status and automation controls.",
+      "states": {
+        "loading": "Skeleton card stack matching platform rows",
+        "empty": "No driver apps configured.",
+        "error": "Failed to query system accessibility services."
+      },
+      "layout": "Vertical stack of platform cards with installed status badge, notification permission toggle, category selector, and independent auto-accept switch."
+    },
+    {
+      "name": "Rules",
+      "purpose": "Edit filter criteria including minimum fare, max pickup distance, fare-per-km, and operating hours.",
+      "states": {
+        "loading": "Skeleton form rows",
+        "empty": "No rules configured.",
+        "error": "Validation error in rule parameter fields."
+      },
+      "layout": "Grouped settings sections with sliders, number steppers, operating hour selectors, and sticky Reset-to-Default / Save bar."
+    },
+    {
+      "name": "Live Requests",
+      "purpose": "Inspect incoming ride requests with real-time confidence scores, rule evaluations, and manual response actions.",
+      "states": {
+        "loading": "Pulsing radar scan animation",
+        "empty": "No active ride requests detected. Enable Simulation Mode in header to test feed.",
+        "error": "Stream parsing failed. Last raw payload logged."
+      },
+      "layout": "Top simulation mode bar, live filter chips, and vertical list of request cards with platform badge, fare, distances, state pill, and Accept/Dismiss actions."
+    },
+    {
+      "name": "History & Diags",
+      "purpose": "Review detection history, rule decision explanations, OCR confidence, and export redacted logs.",
+      "states": {
+        "loading": "Activity log skeleton list",
+        "empty": "No historical events recorded yet.",
+        "error": "Log storage read error."
+      },
+      "layout": "Search/filter header bar followed by chronological event list with expandable rule match breakdown, latency counters, and export button."
+    }
+  ],
+  "images": {
+    "rapido_logo": {
+      "url": "https://images.pexels.com/photos/11206901/pexels-photo-11206901.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Rapido Captain delivery and ride service"
+    },
+    "uber_logo": {
+      "url": "https://images.unsplash.com/photo-1723083661335-c88891b92323?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwxfHxVYmVyJTIwZHJpdmVyJTIwbG9nbyUyMHBuZ3xlbnwwfHx8fDE3ODgyNDAyMDB8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Uber Driver partner logo"
+    },
+    "ola_logo": {
+      "url": "https://images.unsplash.com/photo-1669220235918-04cbf9e054b9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwxfHxvbGElMjBkcml2ZXIlMjBsb2dvJTIwcG5nJTIwdHJhbnNwYXJlbnR8ZW58MHx8fHwxNzkwNzAxNDA0fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Ola Driver partner logo"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Adhere strictly to Personality 7 (Dark-First Utility DARK) with warm amber-orange accent (#FF6B00) and deep obsidian surface (#121418).",
+    "Implement Indian ride-hailing context (₹ and kilometres, Rapido, Uber Driver, Ola Driver).",
+    "Include an interactive Simulation Mode toggle at the top of Live Requests and Dashboard to feed test ride requests through the pipeline in the preview.",
+    "Ensure all touch targets are >= 44x44pt, text sizes follow the strict token scale, and weight cap is 500 max (except display titles where bold is permitted by Barlow Condensed).",
+    "Implement Loading, Empty, and Error states on every screen with full height container.",
+    "Never display a ride as accepted unless confirmed by reliable evidence; use explicit manual verification prompts for unconfirmed states."
+  ]
+}

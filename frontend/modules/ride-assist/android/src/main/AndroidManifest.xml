@@ -1,0 +1,42 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Package visibility (Android 11+): only the explicitly configured driver
+         apps are queried. QUERY_ALL_PACKAGES is intentionally NOT used. -->
+    <queries>
+        <package android:name="com.rapido.captain" />
+        <package android:name="com.ubercab.driver" />
+        <package android:name="com.olacabs.driver" />
+    </queries>
+
+    <application>
+        <!-- Detects ride request notifications from configured driver apps only.
+             The BIND_NOTIFICATION_LISTENER_SERVICE permission is signature-level
+             and held by the system only, so no third-party app can bind to it. -->
+        <service
+            android:name=".RideAssistNotificationListenerService"
+            android:label="RideAssist Ride Request Listener"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Optional, read-only screen observation. This service NEVER dispatches
+             gestures/taps: interaction stays manual until a permitted adapter is
+             verified for a specific app version. -->
+        <service
+            android:name=".RideAssistAccessibilityService"
+            android:label="RideAssist Screen Reader (optional)"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/rideassist_accessibility_config" />
+        </service>
+    </application>
+
+</manifest>
