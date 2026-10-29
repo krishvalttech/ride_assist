@@ -22,7 +22,7 @@ const CATEGORY_PATTERNS: [RegExp, string][] = [
 
 const PLATFORM_RIDE_KEYWORDS: Record<RidePlatform, RegExp[]> = {
   rapido: [/ride\s*request/i, /new\s*ride/i, /\bcaptain\b/i],
-  uber: [/trip\s*request/i, /new\s*trip/i, /\bdriver\s*app\b/i],
+  uber: [/trip\s*request/i, /new\s*trip/i, /ride\s*request/i, /\bdriver\s*app\b/i],
   ola: [/ride\s*request/i, /new\s*ride/i],
 };
 

@@ -188,6 +188,31 @@ export interface DiagnosticEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Capture Tool samples (redacted) for parser tuning
+// ---------------------------------------------------------------------------
+
+export interface CaptureSample {
+  id: string;
+  ts: number;
+  platform: RidePlatform;
+  source: NativeEventSource;
+  /** "live" = captured from the listener/simulator, "manual" = pasted by the user. */
+  origin: "live" | "manual";
+  simulated: boolean;
+  /** Redacted, bounded notification text. */
+  preview: string;
+  parsedAsRide: boolean;
+  fare?: number;
+  pickupDistanceKm?: number;
+  tripDistanceKm?: number;
+  category?: string;
+  confidence: number;
+  missingFields: MissingField[];
+  /** User's ground-truth label used to judge the parser. */
+  label: "ride" | "not-ride" | null;
+}
+
+// ---------------------------------------------------------------------------
 // Parsed ride (output of a platform parser)
 // ---------------------------------------------------------------------------
 

@@ -20,6 +20,9 @@ Build RideAssist: a real Android ride-request monitoring & acceptance-assistance
 - All 5 required screen areas, simulation pipeline, manual confirmation sheet, UNKNOWN verification
 - Kotlin: NotificationListenerService (package validation, group summary skip, redaction, dedup, buffered delivery), read-only AccessibilityService, module bridge, unit + instrumentation tests (not executed here)
 - 60 Jest tests passing; tsc + ESLint clean; testing agent iteration 1 at ~88% pass, then all 6 reported bugs fixed
+- (2026-06) Earnings Insights (/earnings + Dashboard card): today / last-7-days ₹ totals, weighted ₹/km, per-platform, simulated toggle — CONFIRMED accepted rides only, detected fares labelled as estimates
+- (2026-06) Notification Capture Tool (/capture): redacted live + pasted samples, parse result, ride/not-ride labels, parser agreement %, export/clear
+- (2026-06) Spoken Ride Alerts: on-device expo-speech (en-IN) for eligible requests, once per ride, test button; 70 Jest tests passing; testing agent iteration 3 all pass
 
 ## Backlog
 - P0: Build APK on Windows (`npx expo prebuild` + `gradlew.bat assembleDebug`), run Kotlin tests, verify real notification formats/package IDs on device

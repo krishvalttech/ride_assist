@@ -12,10 +12,12 @@ import { assertTransition, isTerminal } from "@/src/state/machine";
 import { previewOf, redactMeta } from "@/src/services/redact";
 import { storage } from "@/src/utils/storage";
 import type {
+  CaptureSample,
   DiagnosticCategory,
   DiagnosticEntry,
   DiagnosticLevel,
   NativeNotificationEvent,
+  ParsedRide,
   PlatformConfig,
   RidePlatform,
   RideRequest,
@@ -35,7 +37,12 @@ const KEYS = {
   platforms: "rideassist_platforms_v1",
   monitoring: "rideassist_monitoring_v1",
   simulator: "rideassist_simulator_v1",
+  samples: "rideassist_samples_v1",
+  capture: "rideassist_capture_v1",
+  voice: "rideassist_voice_v1",
 } as const;
+
+const SAMPLES_CAP = 60;
 
 export interface NativePermissionStatus {
   notificationListener: "granted" | "denied" | "unavailable";
@@ -51,6 +58,10 @@ export interface RideAssistState {
   monitoring: boolean;
   simulatorOn: boolean;
   nativePermission: NativePermissionStatus | null;
+  /** Redacted notification samples for parser tuning (Capture Tool). */
+  samples: CaptureSample[];
+  captureOn: boolean;
+  voiceAlertsOn: boolean;
 }
 
 export interface DailyStats {
@@ -68,6 +79,32 @@ export interface DailyStats {
 }
 
 type AutoAcceptHandler = (ride: RideRequest) => void;
+
+/** Redacted capture sample from a notification and its parse result. */
+export function buildCaptureSample(
+  event: Pick<NativeNotificationEvent, "platform" | "title" | "text" | "subText" | "source" | "simulated">,
+  parsed: ParsedRide,
+  origin: CaptureSample["origin"],
+): CaptureSample {
+  const raw = [event.title, event.subText, event.text].filter((p) => p && p.trim().length > 0).join(" — ");
+  return {
+    id: makeId("smp"),
+    ts: Date.now(),
+    platform: event.platform,
+    source: event.source,
+    origin,
+    simulated: !!event.simulated,
+    preview: previewOf(raw, 240),
+    parsedAsRide: parsed.isRideRequest,
+    fare: parsed.fare,
+    pickupDistanceKm: parsed.pickupDistanceKm,
+    tripDistanceKm: parsed.tripDistanceKm,
+    category: parsed.category,
+    confidence: parsed.confidence,
+    missingFields: parsed.missingFields,
+    label: null,
+  };
+}
 
 function makeId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -110,6 +147,9 @@ class RideStore {
     monitoring: false,
     simulatorOn: false,
     nativePermission: null,
+    samples: [],
+    captureOn: false,
+    voiceAlertsOn: false,
   };
 
   private listeners = new Set<() => void>();
@@ -117,6 +157,7 @@ class RideStore {
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private autoAcceptHandler: AutoAcceptHandler | null = null;
+  private eligibleListeners = new Set<AutoAcceptHandler>();
   private seq = 0;
 
   // -- React (useSyncExternalStore) ---------------------------------------
@@ -148,6 +189,12 @@ class RideStore {
       storage.getItem<boolean>(KEYS.monitoring, false),
       storage.getItem<boolean>(KEYS.simulator, false),
     ]);
+    const [samplesRaw, captureOn, voiceAlertsOn] = await Promise.all([
+      storage.getItem<string>(KEYS.samples, "[]"),
+      storage.getItem<boolean>(KEYS.capture, false),
+      storage.getItem<boolean>(KEYS.voice, false),
+    ]);
+    const samples = parseJsonArray<CaptureSample>(samplesRaw);
     const rides = parseJsonArray<RideRequest>(ridesRaw);
     const logs = parseJsonArray<DiagnosticEntry>(logsRaw);
     const platforms = parseJsonArray<PlatformConfig>(platformsRaw);
@@ -181,6 +228,9 @@ class RideStore {
       ),
       monitoring: monitoring ?? false,
       simulatorOn: simulator ?? false,
+      samples: samples.slice(-SAMPLES_CAP),
+      captureOn: captureOn ?? false,
+      voiceAlertsOn: voiceAlertsOn ?? false,
       ready: true,
     };
 
@@ -212,7 +262,7 @@ class RideStore {
   }
 
   private async persist(): Promise<void> {
-    const { rides, logs, settings, platformConfigs, monitoring, simulatorOn } = this.state;
+    const { rides, logs, settings, platformConfigs, monitoring, simulatorOn, samples, captureOn, voiceAlertsOn } = this.state;
     await Promise.all([
       storage.setItem(KEYS.rides, JSON.stringify(rides.slice(-RIDES_CAP))),
       storage.setItem(KEYS.logs, JSON.stringify(logs.slice(-LOGS_CAP))),
@@ -220,6 +270,9 @@ class RideStore {
       storage.setItem(KEYS.platforms, JSON.stringify(platformConfigs)),
       storage.setItem(KEYS.monitoring, monitoring),
       storage.setItem(KEYS.simulator, simulatorOn),
+      storage.setItem(KEYS.samples, JSON.stringify(samples.slice(-SAMPLES_CAP))),
+      storage.setItem(KEYS.capture, captureOn),
+      storage.setItem(KEYS.voice, voiceAlertsOn),
     ]);
   }
 
@@ -275,6 +328,12 @@ class RideStore {
       text: event.text,
       subText: event.subText,
     });
+
+    // Capture Tool: keep a redacted sample of EVERY notification from a
+    // configured driver app (rides and non-rides) so parsers can be tuned.
+    if (this.state.captureOn) {
+      this.addSample(buildCaptureSample(event, parsed, "live"));
+    }
 
     if (!parsed.isRideRequest) {
       this.log("info", "detection", `Ignored non-ride notification from ${event.platform}`, {
@@ -384,6 +443,15 @@ class RideStore {
 
     if (decision.eligible && this.autoAcceptHandler) {
       this.autoAcceptHandler(ride);
+    }
+    if (decision.eligible) {
+      for (const listener of this.eligibleListeners) {
+        try {
+          listener(ride);
+        } catch {
+          // A failing listener (e.g. speech engine) must never break ingest.
+        }
+      }
     }
 
     this.notify();
@@ -516,10 +584,69 @@ class RideStore {
       platformConfigs: defaultPlatformConfigs(),
       monitoring: false,
       simulatorOn: false,
+      samples: [],
+      captureOn: false,
+      voiceAlertsOn: false,
     };
     this.notify();
     this.schedulePersist();
     this.log("info", "system", "All local data deleted — settings reset to defaults");
+  }
+
+  // -- Capture Tool ---------------------------------------------------------
+
+  setCapture(on: boolean): void {
+    this.setState({ captureOn: on });
+    this.log("info", "parsing", on ? "Notification capture enabled" : "Notification capture disabled");
+  }
+
+  addSample(sample: CaptureSample): void {
+    this.setState({ samples: [...this.state.samples, sample].slice(-SAMPLES_CAP) });
+  }
+
+  labelSample(sampleId: string, label: CaptureSample["label"]): void {
+    this.setState({
+      samples: this.state.samples.map((s) => (s.id === sampleId ? { ...s, label } : s)),
+    });
+  }
+
+  deleteSample(sampleId: string): void {
+    this.setState({ samples: this.state.samples.filter((s) => s.id !== sampleId) });
+  }
+
+  clearSamples(): void {
+    this.setState({ samples: [] });
+    this.log("info", "parsing", "Captured notification samples cleared");
+  }
+
+  buildSamplesExport(): string {
+    return JSON.stringify(
+      {
+        app: "RideAssist",
+        kind: "notification-samples",
+        schemaVersion: 1,
+        exportedAt: new Date().toISOString(),
+        redaction: "OTPs, passwords, phone numbers and long digit runs removed",
+        samples: this.state.samples,
+      },
+      null,
+      2,
+    );
+  }
+
+  // -- Voice alerts ---------------------------------------------------------
+
+  setVoiceAlerts(on: boolean): void {
+    this.setState({ voiceAlertsOn: on });
+    this.log("info", "system", on ? "Spoken ride alerts enabled" : "Spoken ride alerts disabled");
+  }
+
+  /** Subscribe to requests that just passed every rule (eligible). */
+  addEligibleListener(listener: AutoAcceptHandler): () => void {
+    this.eligibleListeners.add(listener);
+    return () => {
+      this.eligibleListeners.delete(listener);
+    };
   }
 
   // -- Selectors ------------------------------------------------------------

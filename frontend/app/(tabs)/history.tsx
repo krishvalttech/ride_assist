@@ -1,7 +1,8 @@
 // Event history & diagnostics: redacted structured log, latency stats,
 // duplicate suppression, export and local-data deletion.
 import { useMemo, useState } from "react";
-import { FlatList, Platform, Share, StyleSheet, Text, View } from "react-native";
+import { FlatList, StyleSheet, Text, View } from "react-native";
+import { exportText } from "@/src/utils/exportText";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import dayjs from "dayjs";
 import MaterialCommunityIcons from "@react-native-vector-icons/material-design-icons";
@@ -46,18 +47,9 @@ export default function HistoryScreen() {
   const stats = useMemo(() => rideStore.computeDailyStats(), [state.rides]);
 
   const handleExport = async () => {
-    const json = rideStore.buildDiagnosticExport();
     try {
-      if (Platform.OS === "web") {
-        // Web preview: no native share sheet — copy the redacted JSON instead.
-        const clipboard = (globalThis as { navigator?: { clipboard?: { writeText: (t: string) => Promise<void> } } })
-          .navigator?.clipboard;
-        if (!clipboard) throw new Error("clipboard unavailable");
-        await clipboard.writeText(json);
-        toast.show("Redacted diagnostics copied to clipboard", "success");
-      } else {
-        await Share.share({ message: json, title: "RideAssist diagnostics" });
-      }
+      const result = await exportText(rideStore.buildDiagnosticExport(), "RideAssist diagnostics");
+      if (result === "copied") toast.show("Redacted diagnostics copied to clipboard", "success");
       rideStore.log("info", "system", "Diagnostics exported (redacted)");
     } catch {
       toast.show("Could not export diagnostics on this device", "error");

@@ -14,6 +14,7 @@ import { ToastProvider } from "@/src/components/Toast";
 import { useNativeListenerWiring, useRideAssistState } from "@/src/hooks/useRideEngine";
 import { rideStore } from "@/src/services/rideStore";
 import { registerAutoAcceptHook } from "@/src/services/acceptance";
+import { registerVoiceAlerts } from "@/src/services/voiceAlerts";
 import { startSimulator, stopSimulator } from "@/src/services/simulator";
 import { useTheme } from "@/src/theme";
 
@@ -22,6 +23,7 @@ LogBox.ignoreAllLogs(true);
 
 // Wire the auto-accept hook once (honest no-op until a verified adapter exists).
 registerAutoAcceptHook();
+registerVoiceAlerts();
 
 export default function RootLayout() {
   const { colors } = useTheme();

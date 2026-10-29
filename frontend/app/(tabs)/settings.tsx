@@ -13,6 +13,7 @@ import { nativeBridge } from "@/src/services/nativeBridge";
 import { rideStore } from "@/src/services/rideStore";
 import { PLATFORM_ORDER, platformDisplayName } from "@/src/services/platformRegistry";
 import { useRideAssistState } from "@/src/hooks/useRideEngine";
+import { speakTest } from "@/src/services/voiceAlerts";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import type { AcceptanceMode, RidePlatform } from "@/src/models/types";
 
@@ -107,6 +108,44 @@ export default function SettingsScreen() {
             RideAssist never shows a ride as accepted without reliable confirmation, and never uses root, ADB, uinput
             or security-bypass mechanisms.
           </Text>
+        </SectionCard>
+
+        {/* Voice alerts */}
+        <SectionCard title="Spoken ride alerts" testID="settings-voice-card">
+          <ToggleRow
+            label="Read out eligible requests"
+            description="Speaks the platform, fare and pickup distance of requests that pass all your filters. Uses on-device speech — nothing leaves your phone."
+            value={state.voiceAlertsOn}
+            onValueChange={(v) => {
+              rideStore.setVoiceAlerts(v);
+              if (v) speakTest();
+            }}
+            testID="settings-voice-toggle"
+          />
+          <Pressable testID="settings-voice-test" onPress={speakTest} accessibilityRole="button" style={styles.rowLink}>
+            <Text style={styles.rowLinkText}>Play a test announcement</Text>
+            <MaterialCommunityIcons name="volume-high" size={18} color={colors.onSurfaceTertiary} />
+          </Pressable>
+          <Text style={styles.note}>
+            Alerts play while RideAssist is open. Speaking in the background or on the lock screen needs the
+            standalone build and may be limited by Android.
+          </Text>
+        </SectionCard>
+
+        {/* Capture tool */}
+        <SectionCard title="Parser tuning" testID="settings-capture-card">
+          <Pressable
+            testID="settings-open-capture"
+            onPress={() => router.push("/capture")}
+            accessibilityRole="button"
+            style={styles.rowLink}
+          >
+            <Text style={styles.rowLinkText}>
+              Notification Capture Tool{state.captureOn ? " · capturing" : ""} ({state.samples.length})
+            </Text>
+            <MaterialCommunityIcons name="chevron-right" size={18} color={colors.onSurfaceTertiary} />
+          </Pressable>
+          <Text style={styles.note}>Save redacted notification samples, label them and export them to tune the parsers.</Text>
         </SectionCard>
 
         {/* Simulation */}

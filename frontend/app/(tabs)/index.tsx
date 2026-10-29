@@ -11,7 +11,8 @@ import { MetricCard, PrimaryButton, SectionCard, StatusPill, ToggleRow } from "@
 import { bottomChromeInset } from "@/src/navigation";
 import { nativeBridge } from "@/src/services/nativeBridge";
 import { rideStore } from "@/src/services/rideStore";
-import { PLATFORM_ORDER, platformDisplayName } from "@/src/services/platformRegistry";
+import { PLATFORM_ORDER, formatINR, platformDisplayName } from "@/src/services/platformRegistry";
+import { computeEarnings } from "@/src/rules/earnings";
 import { useMonitoringControls, useRideAssistState } from "@/src/hooks/useRideEngine";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import type { RidePlatform } from "@/src/models/types";
@@ -27,6 +28,7 @@ export default function DashboardScreen() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- recompute whenever rides change
   const stats = useMemo(() => rideStore.computeDailyStats(), [state.rides]);
+  const earnings = useMemo(() => computeEarnings(state.rides, Date.now(), { includeSimulated: true }), [state.rides]);
   const nativeAvailable = nativeBridge.isAvailable();
   const notifState = state.nativePermission?.notificationListener ?? "unavailable";
   const permissionRequired = nativeAvailable && notifState !== "granted";
@@ -134,6 +136,26 @@ export default function DashboardScreen() {
           <MetricCard label="Failed / unconfirmed" value={stats.failedOrUnconfirmed} tone="warning" icon="alert" testID="metric-failed" />
           <MetricCard label="Duplicates suppressed" value={stats.duplicateObservationsSuppressed} tone="muted" icon="content-duplicate" testID="metric-duplicates" />
         </View>
+
+        {/* Earnings */}
+        <Pressable
+          testID="dashboard-earnings-card"
+          onPress={() => router.push("/earnings")}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.earningsCard, { opacity: pressed ? 0.85 : 1 }]}
+        >
+          <View style={styles.earningsTextBlock}>
+            <Text style={styles.cardTitle}>Earnings today</Text>
+            <Text style={styles.earningsValue} testID="dashboard-earnings-today">
+              {formatINR(earnings.today.total)}
+            </Text>
+            <Text style={styles.mutedText}>
+              {earnings.today.count} confirmed ride(s) · 7 days {formatINR(earnings.last7Days.total)}
+              {earnings.last7Days.avgPerKm !== null ? ` · ${formatINR(earnings.last7Days.avgPerKm)}/km` : ""}
+            </Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceTertiary} />
+        </Pressable>
 
         {/* Last detected */}
         <SectionCard title="Last detected request" testID="card-last-detected" style={styles.card}>
@@ -264,6 +286,28 @@ const useStyles = makeStyles((colors) => ({
   card: {
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
+  },
+  earningsCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    padding: spacing.lg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.brandSecondary,
+    backgroundColor: colors.brandTertiary,
+  },
+  earningsTextBlock: {
+    flex: 1,
+    gap: 2,
+  },
+  earningsValue: {
+    fontFamily: fonts.display,
+    fontSize: 34,
+    lineHeight: 38,
+    color: colors.onSurface,
   },
   cardTitle: {
     fontFamily: fonts.bodySemiBold,
