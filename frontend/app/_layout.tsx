@@ -11,6 +11,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { ErrorBoundary } from "@/src/components/error-boundary";
 import { queryClient } from "@/src/query-client";
 import { ToastProvider } from "@/src/components/Toast";
+import { AuthProvider } from "@/src/services/auth";
 import { useNativeListenerWiring, useRideAssistState } from "@/src/hooks/useRideEngine";
 import { rideStore } from "@/src/services/rideStore";
 import { registerAutoAcceptHook } from "@/src/services/acceptance";
@@ -62,12 +63,14 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <KeyboardProvider>
             <ToastProvider>
-              <Stack
-                screenOptions={{
-                  headerShown: false,
-                  contentStyle: { backgroundColor: colors.surface },
-                }}
-              />
+              <AuthProvider>
+                <Stack
+                  screenOptions={{
+                    headerShown: false,
+                    contentStyle: { backgroundColor: colors.surface },
+                  }}
+                />
+              </AuthProvider>
             </ToastProvider>
           </KeyboardProvider>
         </QueryClientProvider>

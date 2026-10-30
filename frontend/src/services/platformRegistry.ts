@@ -28,7 +28,7 @@ export const PLATFORM_META: Record<RidePlatform, PlatformMeta> = {
   ola: {
     platform: "ola",
     displayName: "Ola Driver",
-    defaultPackageName: "com.olacabs.driver",
+    defaultPackageName: "com.olacabs.oladriver",
     packageVerified: false,
   },
 };

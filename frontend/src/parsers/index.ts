@@ -64,18 +64,34 @@ export function looksLikeRideNotification(platform: RidePlatform, { title, text 
   return PLATFORM_RIDE_KEYWORDS[platform].some((pattern) => pattern.test(combined));
 }
 
-export function parseRideNotification(platform: RidePlatform, texts: NotificationTexts): ParsedRide {
+export interface ParseOptions {
+  /** "screen" observations (accessibility) have no title and rarely ride keywords. */
+  source?: "notification" | "screen";
+}
+
+const ACCEPT_LABEL_RE = /\b(accept|tap to accept|swipe to accept)\b/i;
+const DROP_RE = /\bdrop(?:\s*location)?\b\s*[:\-–]?\s*([^·•|\n]{3,60})/i;
+
+export function parseRideNotification(platform: RidePlatform, texts: NotificationTexts, options: ParseOptions = {}): ParsedRide {
   const title = (texts.title ?? "").slice(0, 300);
   const body = (texts.text ?? "").slice(0, 300);
   const subText = (texts.subText ?? "").slice(0, 300);
   const combined = `${title} ${subText} ${body}`;
 
-  const isRideRequest = looksLikeRideNotification(platform, { title, text: `${subText} ${body}` });
-
   const fare = firstMatch(combined, FARE_PATTERNS);
   const pickupDistanceKm = firstMatch(combined, PICKUP_PATTERNS);
   const tripDistanceKm = firstMatch(combined, TRIP_PATTERNS);
   const category = detectCategory(combined);
+  const dropMatch = combined.match(DROP_RE);
+  const dropLocation = dropMatch ? redactSensitive(dropMatch[1].trim()).slice(0, 60) : undefined;
+
+  // Ride requests shown on screen (Rapido/Ola full-screen cards) usually lack
+  // the "ride request" keyword: an Accept control PLUS a fare or km value counts.
+  const screenRide =
+    options.source === "screen" &&
+    ACCEPT_LABEL_RE.test(combined) &&
+    (fare !== undefined || pickupDistanceKm !== undefined || tripDistanceKm !== undefined);
+  const isRideRequest = screenRide || looksLikeRideNotification(platform, { title, text: `${subText} ${body}` });
 
   // Confidence reflects how much structured data could actually be extracted.
   // A keyword match alone is the weakest signal.
@@ -97,6 +113,7 @@ export function parseRideNotification(platform: RidePlatform, texts: Notificatio
     pickupDistanceKm,
     tripDistanceKm,
     category,
+    dropLocation,
     confidence,
     missingFields,
     isRideRequest,

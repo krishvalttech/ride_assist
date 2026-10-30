@@ -6,7 +6,8 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MaterialCommunityIcons from "@react-native-vector-icons/material-design-icons";
 
-import { Chip, SectionCard, ToggleRow } from "@/src/components/ui";
+import { Chip, PrimaryButton, SectionCard, ToggleRow } from "@/src/components/ui";
+import { useAuth } from "@/src/services/auth";
 import { useToast } from "@/src/components/Toast";
 import { bottomChromeInset } from "@/src/navigation";
 import { nativeBridge } from "@/src/services/nativeBridge";
@@ -24,6 +25,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const toast = useToast();
   const state = useRideAssistState();
+  const auth = useAuth();
 
   const nativeAvailable = nativeBridge.isAvailable();
   const rulesSummary = useMemo(() => {
@@ -34,7 +36,7 @@ export default function SettingsScreen() {
   const setAcceptanceMode = (mode: AcceptanceMode) => {
     rideStore.setSettings({ ...state.settings, acceptanceMode: mode });
     if (mode === "auto-permitted") {
-      toast.show("Auto-accept stays off until a permitted interaction adapter is verified on your device", "warning");
+      toast.show("Auto-tap works only for driver apps where you switched it on (Settings → driver app) and Accessibility is enabled", "warning");
     }
   };
 
@@ -156,6 +158,19 @@ export default function SettingsScreen() {
             value={state.simulatorOn}
             onValueChange={(v) => rideStore.setSimulator(v)}
             testID="settings-simulation-toggle"
+          />
+        </SectionCard>
+
+        {/* Account */}
+        <SectionCard title="Account" testID="settings-account-card">
+          <Text style={styles.summary} testID="settings-account-email">{auth.user?.email}</Text>
+          <PrimaryButton
+            label="Log out"
+            tone="neutral"
+            onPress={() => {
+              void auth.logout().then(() => router.replace("/login"));
+            }}
+            testID="settings-logout-button"
           />
         </SectionCard>
 

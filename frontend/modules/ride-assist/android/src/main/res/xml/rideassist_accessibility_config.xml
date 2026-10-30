@@ -5,4 +5,5 @@
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityNotificationTimeout="100"
     android:canRetrieveWindowContent="true"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
     android:description="@string/rideassist_accessibility_description" />

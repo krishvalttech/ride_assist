@@ -30,7 +30,10 @@ object RideAssistEventHub {
     private val recentKeys = LinkedHashSet<String>()
 
     fun emit(event: JSONObject) {
-        val key = "${event.optString("id")}:${event.optLong("postedAt")}"
+        // Include a content hash: notification UPDATES often reuse the same key
+        // and post time, and were previously dropped as duplicates.
+        val key = "${event.optString("id")}:${event.optLong("postedAt")}:${event.optBoolean("removed")}:${(event.optString("title") + event.optString("text")).hashCode()}"
+        recordActivity(event)
         synchronized(lock) {
             if (!recentKeys.add(key)) return
             if (recentKeys.size > MAX_RECENT_KEYS) {
@@ -63,6 +66,16 @@ object RideAssistEventHub {
     }
 
     fun bufferedCount(): Int = synchronized(lock) { pending.size }
+
+    /** Per-platform "last real event" timestamp, used for Connected / Not Detected status. */
+    private fun recordActivity(event: JSONObject) {
+        try {
+            val context = RideAssistContextHolder.applicationContext ?: return
+            context.getSharedPreferences(RideAssistModule.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                .edit().putLong("last_event_${event.optString("platform")}", System.currentTimeMillis()).apply()
+        } catch (_: Exception) {
+        }
+    }
 
     /** Bounded, redacted local persistence of essential event metadata. */
     private fun persistMetadata(event: JSONObject) {

@@ -13,8 +13,14 @@ import org.json.JSONObject
 object RideEventNormalizer {
 
     val PLATFORM_PACKAGES: Map<String, String> = mapOf(
+        // Package ids cross-checked against the reference RideAssist APK's
+        // string table (com.olacabs.oladriver is Ola's driver app; the
+        // previously used com.olacabs.driver was wrong). Still unverified on
+        // a physical device.
         "com.rapido.captain" to "rapido",
+        "com.rapido.partner" to "rapido",
         "com.ubercab.driver" to "uber",
+        "com.olacabs.oladriver" to "ola",
         "com.olacabs.driver" to "ola",
     )
 

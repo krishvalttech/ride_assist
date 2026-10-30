@@ -9,9 +9,11 @@ import org.json.JSONObject
  * apps.
  *
  * Compliance contract (enforced in code, not just intent):
- * - NEVER dispatches gestures or taps — no performAction on clickable nodes,
- *   no dispatchGesture, no global actions. Acceptance interaction stays
- *   manual until a permitted adapter is verified for a specific app version.
+ * - Observation here is read-only. The ONLY interaction path is the isolated
+ *   RideAssistAcceptAdapter (standard AccessibilityNodeInfo.ACTION_CLICK on a
+ *   visible "Accept" node), which runs only when the user explicitly enabled
+ *   auto-accept for that platform. No dispatchGesture, no global actions, no
+ *   input injection.
  * - Only events from configured driver-app packages are inspected.
  * - Only visible node text is collected (bounded walk, capped depth/count).
  * - Emits are rate-limited per package; no continuous polling.
@@ -23,9 +25,16 @@ class RideAssistAccessibilityService : AccessibilityService() {
     private var lastEmitPerPackage: MutableMap<String, Long> = HashMap()
     private var enabled = false
 
+    companion object {
+        /** Live instance, used only by the isolated, opt-in RideAssistAcceptAdapter. */
+        @Volatile
+        var instance: RideAssistAccessibilityService? = null
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         enabled = true
+        instance = this
         RideAssistContextHolder.applicationContext = applicationContext
     }
 
@@ -43,7 +52,7 @@ class RideAssistAccessibilityService : AccessibilityService() {
         if (now - last < RATE_LIMIT_MS) return
         lastEmitPerPackage[sourcePackage] = now
 
-        val texts = collectVisibleTexts(event, maxNodes = 30, maxCharsPerNode = 200)
+        val texts = collectVisibleTexts(event, maxNodes = 120, maxCharsPerNode = 200)
         if (texts.isEmpty()) return
 
         val combined = texts.joinToString(" ")
@@ -64,7 +73,11 @@ class RideAssistAccessibilityService : AccessibilityService() {
     private fun collectVisibleTexts(event: AccessibilityEvent, maxNodes: Int, maxCharsPerNode: Int): List<String> {
         val out = ArrayList<String>()
         val queue = ArrayDeque<android.view.accessibility.AccessibilityNodeInfo>()
-        val sourceNode = event.source ?: return out
+        // FIX: event.source is only the changed node (often an empty container),
+        // which is why full ride cards were never read. Use the active window
+        // root of the SAME driver-app package instead.
+        val root = rootInActiveWindow
+        val sourceNode = if (root != null && root.packageName?.toString() == event.packageName?.toString()) root else (event.source ?: return out)
         queue.add(sourceNode)
         var visited = 0
         while (queue.isNotEmpty() && visited < maxNodes) {
@@ -101,6 +114,7 @@ class RideAssistAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         enabled = false
+        if (instance === this) instance = null
         super.onDestroy()
     }
 }

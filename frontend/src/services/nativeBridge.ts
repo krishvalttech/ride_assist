@@ -30,6 +30,11 @@ interface RideAssistNativeModule {
   stopMonitoring?: () => Promise<boolean>;
   isPackageInstalled?: (packageName: string) => Promise<boolean>;
   syncPlatformPackages?: (packages: Record<string, string>) => Promise<boolean>;
+  requestAcceptance?: (platform: string, fare: number | null) => { status: string; reason: string };
+  getAcceptanceEvidence?: (platform: string) => { status: string; reason: string };
+  getPlatformActivity?: () => Record<string, number>;
+  isIgnoringBatteryOptimizations?: () => boolean;
+  openBatteryOptimizationSettings?: () => boolean;
   getPendingEvents?: () => Promise<NativeNotificationEvent[]>;
   clearPendingEvents?: () => Promise<void>;
   addListener?: (eventName: string, listener: (event: NativeNotificationEvent) => void) => { remove: () => void };
@@ -114,6 +119,53 @@ class NativeBridge {
       return (await fn(packageName)) === true;
     } catch {
       return null;
+    }
+  }
+
+  /** Push the (possibly user-corrected) platform → package-id map to the native listener. */
+  /** Opt-in accessibility accept tap. null = native capability absent. */
+  requestAcceptance(platform: string, fare: number | undefined): { status: string; reason: string } | null {
+    const fn = getNativeModule()?.requestAcceptance;
+    if (!fn) return null;
+    try {
+      return fn(platform, fare ?? null);
+    } catch (error) {
+      return { status: "FAILED", reason: error instanceof Error ? error.message : "native error" };
+    }
+  }
+
+  getAcceptanceEvidence(platform: string): { status: string; reason: string } | null {
+    const fn = getNativeModule()?.getAcceptanceEvidence;
+    if (!fn) return null;
+    try {
+      return fn(platform);
+    } catch {
+      return { status: "UNKNOWN", reason: "native error" };
+    }
+  }
+
+  /** Last real event per platform (epoch ms, 0 = never); null when unavailable. */
+  getPlatformActivity(): Record<string, number> | null {
+    try {
+      return getNativeModule()?.getPlatformActivity?.() ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  isIgnoringBatteryOptimizations(): boolean | null {
+    try {
+      return getNativeModule()?.isIgnoringBatteryOptimizations?.() ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  openBatteryOptimizationSettings(): void {
+    try {
+      getNativeModule()?.openBatteryOptimizationSettings?.();
+    } catch {
+      // ignore — guidance text remains visible
     }
   }
 

@@ -223,9 +223,12 @@ class RideStore {
       rides: recoveredRides.slice(-RIDES_CAP),
       logs: (logs ?? []).slice(-LOGS_CAP),
       settings: { ...DEFAULT_SETTINGS, ...(settings ?? {}) },
-      platformConfigs: defaultPlatformConfigs().map(
-        (def) => ({ ...def, ...(platforms.find((p) => p.platform === def.platform) ?? {}) }),
-      ),
+      platformConfigs: defaultPlatformConfigs().map((def) => {
+        const saved = platforms.find((p) => p.platform === def.platform);
+        // Migration: the old Ola default (com.olacabs.driver) was the wrong package.
+        const packageName = saved?.packageName === "com.olacabs.driver" ? def.packageName : saved?.packageName;
+        return { ...def, ...(saved ?? {}), ...(packageName ? { packageName } : {}) };
+      }),
       monitoring: monitoring ?? false,
       simulatorOn: simulator ?? false,
       samples: samples.slice(-SAMPLES_CAP),
@@ -323,11 +326,11 @@ class RideStore {
       return null;
     }
 
-    const parsed = parseRideNotification(event.platform, {
-      title: event.title,
-      text: event.text,
-      subText: event.subText,
-    });
+    const parsed = parseRideNotification(
+      event.platform,
+      { title: event.title, text: event.text, subText: event.subText },
+      { source: event.source },
+    );
 
     // Capture Tool: keep a redacted sample of EVERY notification from a
     // configured driver app (rides and non-rides) so parsers can be tuned.
@@ -380,6 +383,7 @@ class RideStore {
       pickupDistanceKm: parsed.pickupDistanceKm,
       tripDistanceKm: parsed.tripDistanceKm,
       category: parsed.category,
+      dropLocation: parsed.dropLocation,
       detectedAt: event.postedAt,
       confidence: parsed.confidence,
       status: "DETECTED",

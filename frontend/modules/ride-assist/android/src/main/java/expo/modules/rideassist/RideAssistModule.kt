@@ -128,6 +128,42 @@ class RideAssistModule : Module() {
             promise.resolve(RideAssistEventHub.drainPending().toMapList())
         }
 
+        /** Opt-in accessibility accept tap for the active request (see RideAssistAcceptAdapter). */
+        Function("requestAcceptance") { platform: String, fare: Double? ->
+            val result = RideAssistAcceptAdapter.requestAcceptance(platform, fare)
+            mapOf("status" to result.status, "reason" to result.reason)
+        }
+
+        Function("getAcceptanceEvidence") { platform: String ->
+            val result = RideAssistAcceptAdapter.checkEvidence(platform)
+            mapOf("status" to result.status, "reason" to result.reason)
+        }
+
+        /** Last time a REAL event was seen per platform (epoch ms, 0 = never). */
+        Function("getPlatformActivity") {
+            val p = prefs()
+            mapOf(
+                "rapido" to (p?.getLong("last_event_rapido", 0L) ?: 0L).toDouble(),
+                "uber" to (p?.getLong("last_event_uber", 0L) ?: 0L).toDouble(),
+                "ola" to (p?.getLong("last_event_ola", 0L) ?: 0L).toDouble(),
+            )
+        }
+
+        Function("isIgnoringBatteryOptimizations") {
+            val ctx = context ?: return@Function false
+            val pm = ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            pm.isIgnoringBatteryOptimizations(ctx.packageName)
+        }
+
+        /** Opens the system battery-optimization list; the user chooses — never silently changed. */
+        Function("openBatteryOptimizationSettings") {
+            val ctx = context ?: return@Function false
+            ctx.startActivity(
+                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            true
+        }
+
         Function("clearPendingEvents") {
             RideAssistEventHub.clearPending()
             true

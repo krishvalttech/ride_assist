@@ -24,6 +24,20 @@ import org.json.JSONObject
  */
 class RideAssistNotificationListenerService : NotificationListenerService() {
 
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        RideAssistContextHolder.applicationContext = applicationContext
+    }
+
+    /** Service restarts: ask the system to rebind instead of staying silently dead. */
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        try {
+            requestRebind(android.content.ComponentName(this, RideAssistNotificationListenerService::class.java))
+        } catch (_: Exception) {
+        }
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         handle(sbn, removed = false)
     }
@@ -40,10 +54,21 @@ class RideAssistNotificationListenerService : NotificationListenerService() {
         if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
 
         val extras = sbn.notification.extras
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
+        val title = (extras.getCharSequence(Notification.EXTRA_TITLE_BIG) ?: extras.getCharSequence(Notification.EXTRA_TITLE))?.toString() ?: ""
+        // Inbox-style and custom-view notifications often leave EXTRA_TEXT empty:
+        // fall back to text lines, info text and ticker so fare/km are not lost.
+        val lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.joinToString(" ") { it.toString() }
+        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+            ?.takeIf { it.isNotBlank() }
+            ?: lines
+            ?: sbn.notification.tickerText?.toString()
+            ?: ""
         val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
-        val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString() ?: bigText
+        val subText = listOfNotNull(
+            extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString(),
+            extras.getCharSequence(Notification.EXTRA_INFO_TEXT)?.toString(),
+            extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT)?.toString(),
+        ).joinToString(" ").ifBlank { bigText ?: "" }
 
         val event = RideEventNormalizer.buildEvent(
             id = sbn.key ?: "${sbn.packageName}:${sbn.postTime}",

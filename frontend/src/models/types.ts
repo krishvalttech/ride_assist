@@ -64,6 +64,7 @@ export interface RideRequest {
   pickupDistanceKm?: number;
   tripDistanceKm?: number;
   category?: string;
+  dropLocation?: string;
   detectedAt: number;
   confidence: number;
   status: RideStatus;
@@ -221,6 +222,8 @@ export interface ParsedRide {
   pickupDistanceKm?: number;
   tripDistanceKm?: number;
   category?: string;
+  /** Short, redacted drop label when the source exposes it. */
+  dropLocation?: string;
   confidence: number;
   missingFields: MissingField[];
   /** True when the parser believes this notification is actually a ride request. */

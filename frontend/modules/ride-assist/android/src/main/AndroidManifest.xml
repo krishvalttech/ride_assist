@@ -4,7 +4,9 @@
          apps are queried. QUERY_ALL_PACKAGES is intentionally NOT used. -->
     <queries>
         <package android:name="com.rapido.captain" />
+        <package android:name="com.rapido.partner" />
         <package android:name="com.ubercab.driver" />
+        <package android:name="com.olacabs.oladriver" />
         <package android:name="com.olacabs.driver" />
     </queries>
 

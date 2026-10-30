@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 4 tested the backend and frontend for email/password auth, the Settings account card, and the platform detection/accessibility UI, plus a simulation and manual-accept regression. Backend: 20/20 pytest tests pass. Register returns 201 and rejects duplicates with 409, including uppercase emails. Short passwords get 400 and invalid emails get 422. Login gives 200 for the right password and 401 for a wrong password or unknown user. /me gives 200 with a token and 401 for a bad or missing token. Logout revokes only that token. Forgot-password returns the same generic 200 for known and unknown emails, and the real Emergent email send succeeded. Reset-password returns 400 for a wrong code, a non-digit code, a short password and an unknown email. Frontend at 390x844: signed out, the app opens on /login and the submit button starts disabled. A wrong password shows 'Invalid email or password'. Forgot password hides the password field, sends the code and switches to reset mode with the code input; the input strips non-digits and a wrong code shows 'Invalid or expired code'. Create account blocks passwords under 8 characters, then goes to / with all four tabs. The Settings email matches the account, the session survives a reload, and Log out returns to /login. Sign-in trims and lowercases the email. Visiting /login while signed in redirects to /. On the Rapido, Uber and Ola screens, Detection status shows 'Needs APK build', the 'Accessibility (Accept tap)' row is present and the Auto-tap toggle is off by default. Regression: simulation produced requests, Accept (simulated) moved a request to Accepted and the dashboard Accepted & confirmed count went to 1. No page errors were seen.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/reset-password", "issue": "A successful reset does not revoke existing JWTs, so other devices stay signed in for up to 30 days after a password change."},
+      {"endpoint": "POST /api/auth/forgot-password, /login", "issue": "There is no rate limiting, so these endpoints can be used to flood an inbox or guess passwords. Also, forgot-password returns 502/503/400 only for registered emails when the email provider fails, which reveals whether an account exists."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "platform/[id] 'Why permissions matter' card", "issue": "The text says Accessibility is 'never used to tap buttons automatically', which contradicts the new 'Auto-tap Accept (Accessibility)' toggle on the same screen. Reference: /app/frontend/app/platform/[id].tsx:237-238", "testID": "platform-permissions-card", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "platform/[id]", "issues": ["The Notification access and Accessibility rows say 'Unavailable (Expo Go)' even on the web preview. 'Needs APK build' (as used in the Detection status row) would be more consistent."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_auth.py", "/app/test_reports/pytest/pytest_auth_results.xml"],
+  "action_items": [
+    "Update the 'Why permissions matter' text in platform/[id].tsx so it describes the optional Auto-tap Accept accessibility feature.",
+    "Optional: revoke existing sessions after a password reset (e.g. store a password-changed timestamp on the user and reject tokens issued before it).",
+    "Optional: add basic rate limiting to /auth/login and /auth/forgot-password."
+  ],
+  "critical_code_review_comments": [
+    "auth.py: bcrypt hashing, a dummy-hash timing equaliser, a SHA-256 hash of the reset code, a 5-attempt lockout, a TTL index and jti revocation all look good. _id is excluded from responses.",
+    "acceptance.ts: providerFor() uses the native accessibility provider for real rides whenever acceptanceAssistEnabled is on, even in Manual approval mode when the user taps Accept. That seems intended, but it should be documented in the UI."
+  ],
+  "updated_files": ["/app/backend/tests/test_auth.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created test users delivered+test_<hex>@resend.dev (pytest) and delivered+ui_<hex>@resend.dev (UI) on the real backend; they were not cleaned up. Reset emails were sent to the test users and to delivered+driver@resend.dev.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the backend tests with: EXPO_PUBLIC_BACKEND_URL=<from frontend/.env> pytest /app/backend/tests/test_auth.py (frontend/.env uses EXPO_PUBLIC_BACKEND_URL, not EXPO_BACKEND_URL). Each browser_automation call starts a fresh context, so log in at the start of every script (delivered+driver@resend.dev / Driver@123). Reset codes cannot be read, so only the error paths can be tested. Accept buttons use testID request-accept-<rideId>; an eligible simulated request appears within about 60s."
+}

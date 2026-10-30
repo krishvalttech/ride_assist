@@ -2,12 +2,10 @@
 // app's UI. Providers distinguish an ATTEMPTED interaction (REQUESTED) from a
 // CONFIRMED acceptance — and anything ambiguous stays UNKNOWN.
 //
-// HONESTY NOTE: no verified, permitted tap-automation adapter exists for
-// Rapido/Uber/Ola. The native provider intentionally refuses to perform
-// on-screen interaction (no accessibility tap injection, no root/ADB/uinput
-// tricks) and reports UNAVAILABLE, so automatic acceptance is effectively
-// disabled until a platform-specific adapter is verified on a real device.
-// The manual approval flow is the fully working path.
+// HONESTY NOTE: the native accessibility tap adapter is opt-in per platform
+// and UNVERIFIED on real Rapido/Uber/Ola versions. It uses only the standard
+// accessibility click on a visible Accept control (no root/ADB/uinput), and
+// any failure falls back to the manual approval flow.
 import { nativeBridge } from "@/src/services/nativeBridge";
 import { previewOf } from "@/src/services/redact";
 import { rideStore } from "@/src/services/rideStore";
@@ -78,25 +76,45 @@ export const simulatedAcceptanceProvider: AcceptanceProvider = {
   },
 };
 
+const EVIDENCE_POLL_MS = 1000;
+const EVIDENCE_POLLS = 8;
+
 /**
- * Native accessibility provider. Read-only screen observation is implemented;
- * interaction is NOT: without a verified adapter for the exact app version,
- * attempting taps would be unsafe and dishonest.
+ * Native accessibility provider (opt-in, UNVERIFIED on real app versions).
+ * Taps a single visible "Accept" control via the standard accessibility API
+ * only when the driver enabled it for that platform. A tap is REQUESTED,
+ * never ACCEPTED — confirmation needs a positive post-accept screen.
  */
 export const nativeAcceptanceProvider: AcceptanceProvider = {
   name: "native-accessibility",
   async isSupported() {
-    return false; // No verified, permitted interaction adapter exists yet.
+    if (!nativeBridge.isAvailable()) return false;
+    return rideStore.getSnapshot().nativePermission?.accessibility === "granted";
   },
-  async requestAcceptance() {
-    return {
-      status: "UNAVAILABLE" as const,
-      reason:
-        "No verified, permitted interaction adapter is available for this app version — use manual confirmation.",
-    };
+  async requestAcceptance(requestId) {
+    const ride = rideStore.getRide(requestId);
+    if (!ride) return { status: "FAILED" as const, reason: "Request not found" };
+    const result = nativeBridge.requestAcceptance(ride.platform, ride.fare);
+    if (!result) return { status: "UNAVAILABLE" as const, reason: "Native module not available in this build" };
+    const status = result.status === "REQUESTED" || result.status === "FAILED" ? result.status : "UNAVAILABLE";
+    return { status, reason: result.reason };
   },
-  async getAcceptanceEvidence() {
-    return { status: "UNKNOWN" as const, source: "native", reason: "Requires manual verification" };
+  async getAcceptanceEvidence(requestId) {
+    const ride = rideStore.getRide(requestId);
+    if (!ride) return { status: "UNKNOWN" as const, source: "native", reason: "Request not found" };
+    let last: AcceptanceEvidenceResult = { status: "UNKNOWN", source: "native", reason: "No reliable confirmation on screen" };
+    for (let i = 0; i < EVIDENCE_POLLS; i += 1) {
+      await delay(EVIDENCE_POLL_MS);
+      const result = nativeBridge.getAcceptanceEvidence(ride.platform);
+      if (!result) break;
+      last = {
+        status: result.status === "CONFIRMED" || result.status === "NOT_CONFIRMED" ? result.status : "UNKNOWN",
+        source: "native",
+        reason: result.reason,
+      };
+      if (last.status === "CONFIRMED") break;
+    }
+    return last;
   },
 };
 
@@ -109,6 +127,8 @@ class AcceptanceManager {
 
   providerFor(ride: RideRequest): AcceptanceProvider {
     if (ride.simulated) return simulatedAcceptanceProvider;
+    const config = rideStore.getSnapshot().platformConfigs.find((p) => p.platform === ride.platform);
+    if (config?.acceptanceAssistEnabled && nativeBridge.isAvailable()) return nativeAcceptanceProvider;
     return manualAcceptanceProvider;
   }
 
@@ -154,8 +174,14 @@ class AcceptanceManager {
         return this.collectEvidence(rideId, provider);
       }
 
-      // UNAVAILABLE (manual mode) → guide the user through manual acceptance.
-      rideStore.log("info", "acceptance", requested.reason ?? MANUAL_REASON, { provider: provider.name }, rideId);
+      // UNAVAILABLE / FAILED tap (or manual mode) → guide the user through manual acceptance.
+      rideStore.log(
+        requested.status === "FAILED" ? "warn" : "info",
+        "acceptance",
+        requested.reason ?? MANUAL_REASON,
+        { provider: provider.name, outcome: requested.status },
+        rideId,
+      );
       return { ok: true, message: requested.reason ?? MANUAL_REASON };
     } finally {
       this.inFlight.delete(rideId);
@@ -334,7 +360,7 @@ class AcceptanceManager {
       rideStore.log(
         "warn",
         "acceptance",
-        `Automatic acceptance unavailable for ${ride.platform} — no verified, permitted interaction adapter. Request awaits manual approval.`,
+        `Automatic acceptance unavailable for ${ride.platform} — Accessibility is off or not supported in this build. Request awaits manual approval.`,
         { provider: provider.name },
         ride.id,
       );

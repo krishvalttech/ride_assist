@@ -1,9 +1,10 @@
 // Bottom tabs: NativeTabs (iOS 26+) or classic JS Tabs elsewhere.
 import { Platform } from "react-native";
 import { NativeTabs } from "expo-router/native-tabs";
-import { Tabs } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import MaterialCommunityIcons from "@react-native-vector-icons/material-design-icons";
 
+import { useAuth } from "@/src/services/auth";
 import { usesNativeTabs } from "@/src/navigation";
 import { useTheme } from "@/src/theme";
 
@@ -81,5 +82,8 @@ function ClassicTabBar() {
 }
 
 export default function TabsLayout() {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <Redirect href="/login" />;
   return usesNativeTabs ? <NativeTabBar /> : <ClassicTabBar />;
 }

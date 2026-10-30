@@ -46,6 +46,26 @@ export default function PlatformConfigScreen() {
 
   const nativeAvailable = nativeBridge.isAvailable();
   const notifState = state.nativePermission?.notificationListener ?? "unavailable";
+  const a11yState = state.nativePermission?.accessibility ?? "unavailable";
+  const [lastEventAt, setLastEventAt] = useState<number>(0);
+  const [batteryOk, setBatteryOk] = useState<boolean | null>(null);
+  useEffect(() => {
+    const read = () => {
+      setLastEventAt(nativeBridge.getPlatformActivity()?.[platform] ?? 0);
+      setBatteryOk(nativeBridge.isIgnoringBatteryOptimizations());
+    };
+    read();
+    const timer = setInterval(read, 5000);
+    return () => clearInterval(timer);
+  }, [platform]);
+  // "Connected" only after a REAL event from this app was observed on this phone.
+  const detectionStatus = !nativeAvailable
+    ? "Needs APK build"
+    : notifState !== "granted"
+      ? "Permission required"
+      : lastEventAt > 0
+        ? `Connected · last event ${new Date(lastEventAt).toLocaleTimeString()}`
+        : "Not detected yet";
   const categories = CATEGORY_OPTIONS[platform];
 
   const commitPackageName = (): boolean => {
@@ -118,10 +138,23 @@ export default function PlatformConfigScreen() {
           />
           <KeyValueRow
             label="Notification access"
-            value={!nativeAvailable ? "Unavailable (Expo Go)" : notifState === "granted" ? "Granted" : "Not granted"}
+            value={!nativeAvailable ? "Needs APK build" : notifState === "granted" ? "Granted" : "Not granted"}
           />
+          <KeyValueRow
+            label="Detection status"
+            value={detectionStatus}
+            testID={`platform-detection-status-${platform}`}
+          />
+          <KeyValueRow
+            label="Accessibility (Accept tap)"
+            value={!nativeAvailable ? "Needs APK build" : a11yState === "granted" ? "Enabled" : "Off"}
+          />
+          {nativeAvailable && batteryOk === false && (
+            <Text style={styles.link} onPress={() => nativeBridge.openBatteryOptimizationSettings()} testID="platform-battery-fix">
+              Battery optimisation is ON — Android may stop detection. Tap to allow RideAssist.
+            </Text>
+          )}
           <KeyValueRow label="Package id verified" value="No — editable below" />
-          <KeyValueRow label="Interaction adapter" value="None verified → manual confirmation" />
         </SectionCard>
 
         <SectionCard title="Detection" testID="platform-detection-card">
@@ -157,16 +190,22 @@ export default function PlatformConfigScreen() {
 
         <SectionCard testID="platform-acceptance-card">
           <ToggleRow
-            label="Acceptance assistance"
-            description="Guides manual acceptance. Automatic acceptance stays unavailable until a permitted interaction adapter is verified for this app version."
+            label="Auto-tap Accept (Accessibility)"
+            description="Off by default. When on and Accessibility is enabled, RideAssist taps the single visible Accept button only if the on-screen fare matches the request that passed your filters. A tap is never counted as accepted until the driver app shows a confirmation."
             value={config.acceptanceAssistEnabled}
-            onValueChange={(v) => rideStore.setPlatformConfig(platform, { acceptanceAssistEnabled: v })}
+            onValueChange={(v) => {
+              rideStore.setPlatformConfig(platform, { acceptanceAssistEnabled: v });
+              if (v && nativeAvailable && a11yState !== "granted") {
+                toast.show("Enable RideAssist in Accessibility settings to allow the tap", "info");
+                void nativeBridge.openAccessibilitySettings();
+              }
+            }}
             testID={`platform-acceptance-toggle-${platform}`}
           />
           <Text style={styles.note}>
-            RideAssist never bypasses security prompts, CAPTCHAs or OTP checks, and does not use root, ADB or uinput
-            injection. If a supported, permitted interaction appears in a future app version, it will land behind this
-            switch as a separate adapter.
+            Unverified on real {platformDisplayName(platform)} versions — swipe-only buttons cannot be tapped. RideAssist
+            never bypasses security prompts, CAPTCHAs or OTP checks, and does not use root, ADB or uinput injection. If
+            the tap is unavailable or fails, accept manually in the driver app.
           </Text>
         </SectionCard>
 
@@ -195,8 +234,8 @@ export default function PlatformConfigScreen() {
         <SectionCard title="Why permissions matter" testID="platform-permissions-card">
           <Text style={styles.note}>
             • Notification access (special access): lets RideAssist read ride request notifications from this app
-            only.{"\n"}• Accessibility (optional, off by default): read-only screen inspection to enrich request data;
-            never used to tap buttons automatically.{"\n"}• Every other app&apos;s notifications are ignored and redacted
+            only.{"\n"}• Accessibility (optional, off by default): reads ride cards on screen, and — only if you switch on
+            Auto-tap Accept for this app — taps the single visible Accept button.{"\n"}• Every other app&apos;s notifications are ignored and redacted
             from logs.
           </Text>
         </SectionCard>

@@ -24,7 +24,16 @@ Build RideAssist: a real Android ride-request monitoring & acceptance-assistance
 - (2026-06) Notification Capture Tool (/capture): redacted live + pasted samples, parse result, ride/not-ride labels, parser agreement %, export/clear
 - (2026-06) Spoken Ride Alerts: on-device expo-speech (en-IN) for eligible requests, once per ride, test button; 70 Jest tests passing; testing agent iteration 3 all pass
 
+- (2026-06 upgrade) Detection: listener reads title/bigTitle/text lines/ticker/info/summary; accessibility reads full active-window root for any configured package (no hardcoded package filter); screen cards with Accept + fare/km count as rides; Ola default package fixed to com.olacabs.oladriver; per-platform "Detection status" (Permission required / Not detected yet / Connected · last event) + battery-optimisation prompt
+- (2026-06 upgrade) Opt-in Auto-tap Accept per platform (RideAssistAcceptAdapter: single visible Accept node, fare must be on screen, ACTION_CLICK only; evidence polled → CONFIRMED / NOT_CONFIRMED / UNKNOWN; never counts a tap as accepted). UNVERIFIED on real devices; Kotlin not compiled here (no Android SDK)
+- (2026-06 upgrade) Email/password auth: backend/auth.py (bcrypt, JWT 30d, logout revocation, 6-digit emailed reset code via Emergent email, reset ends old sessions); /login screen, tabs gated, Settings account + logout. 20 backend tests pass; testing agent iteration 4 all pass
+- (2026-06 upgrade) APK size: removed unused native libs (react-native-webview, expo-blur, expo-linear-gradient, expo-haptics, expo-image). arm64-only + R8/resource shrinking NOT applied — expo-build-properties install was blocked in this environment
+
 ## Backlog
+- P0: Publish an Android build, test real Rapido/Uber/Ola notifications + Auto-tap on phone; tune parsers via Capture Tool
+- P1: expo-build-properties (arm64-v8a only, minify, shrink resources) then measure APK size
+- P1: Recharge plans ₹30/day, ₹170/7 days, ₹500/month (RevenueCat skipped by user for now)
+- P2: Login rate limiting; simplified Home UI
 - P0: Build APK on Windows (`npx expo prebuild` + `gradlew.bat assembleDebug`), run Kotlin tests, verify real notification formats/package IDs on device
 - P1: Room migration if dataset grows; on-device ML Kit OCR adapter (only if notification/node text is insufficient)
 - P1: Per-platform verified interaction adapter (only if permitted)
