@@ -4092,11 +4092,6 @@ expo-asset@~58.0.18:
     "@expo/image-utils" "^0.12.5"
     expo-constants "~58.0.13"
 
-expo-blur@58.0.5:
-  version "58.0.5"
-  resolved "https://registry.yarnpkg.com/expo-blur/-/expo-blur-58.0.5.tgz#55f32f4817e91f06a996c40cc65913eb515d3f69"
-  integrity sha512-l8MEObIh0opwIUf+SD9MfqD0JnOirGuetAW/V3phXQRJaTPKLtb0IukgyLmnOsfWMAWTdJrcl5l/2ezcDHrkHQ==
-
 expo-constants@58.0.13, expo-constants@~58.0.13:
   version "58.0.13"
   resolved "https://registry.yarnpkg.com/expo-constants/-/expo-constants-58.0.13.tgz#766177f24940be1a57887f8689f0148a8e68cb9f"
@@ -4125,27 +4120,10 @@ expo-glass-effect@^58.0.4:
   resolved "https://registry.yarnpkg.com/expo-glass-effect/-/expo-glass-effect-58.0.4.tgz#5b3689ca2b91e426805b20cc01abd6dc52905163"
   integrity sha512-PrxU1FINOpqpnjtZMXHAC/APLq3T3fDforMqQ+JRqRtIrlQ8wntrX8IztLxJBKD9s8cJJ8V9MAoI89aYRK8j9Q==
 
-expo-haptics@58.0.7:
-  version "58.0.7"
-  resolved "https://registry.yarnpkg.com/expo-haptics/-/expo-haptics-58.0.7.tgz#88f72bd09f1d93248138e4bb2c91a286e102bd6f"
-  integrity sha512-mAY3rbng6EuYysq9wnJKhKwYYlDjqnPYcS5OXe3zj4TlAaOFMl/EfiSOuAMawc2nsXCAnwJ5U0E11nq5zQO0mg==
-
-expo-image@58.0.16:
-  version "58.0.16"
-  resolved "https://registry.yarnpkg.com/expo-image/-/expo-image-58.0.16.tgz#667afc6609a51be3b292371d6cf543a5f5850437"
-  integrity sha512-NrpsQGDtuMpXFuD6jQfTwzpWvJztfj9xELXfTaV3tHovEf4pIX2/gU91pnCP2F2IUMpGJCxyDyEqceJ0Bd+eCQ==
-  dependencies:
-    sf-symbols-typescript "^2.2.0"
-
 expo-keep-awake@~58.0.3:
   version "58.0.3"
   resolved "https://registry.yarnpkg.com/expo-keep-awake/-/expo-keep-awake-58.0.3.tgz#c29bc382d8d5b78e455c8f565fed36cf302645c7"
   integrity sha512-wLRF+XeVsD/Rt/ZyX+A0mk1brdf8vefWizNAPzqV5eOCgkj23LCRZdN8gUi5X8UwyR8UJ7Y7Dzdz4YDGB/4c9Q==
-
-expo-linear-gradient@58.0.3:
-  version "58.0.3"
-  resolved "https://registry.yarnpkg.com/expo-linear-gradient/-/expo-linear-gradient-58.0.3.tgz#e910f55d49518323ba396d1e7ad24eb98d40e643"
-  integrity sha512-sh6LXrlaCtlDlZ1CPPFRJWd3bl9lAr8e0hT61PvzMmkxd5sd3POe9QuWtct58wpp7PgOH2okB3iw4tq3ICA4Sg==
 
 expo-linking@58.0.14:
   version "58.0.14"
@@ -4845,7 +4823,7 @@ internal-slot@^1.1.0:
     hasown "^2.0.2"
     side-channel "^1.1.0"
 
-invariant@2.2.4, invariant@^2.2.4:
+invariant@^2.2.4:
   version "2.2.4"
   resolved "https://registry.yarnpkg.com/invariant/-/invariant-2.2.4.tgz#610f3c92c9359ce1db616e538008d23ff35158e6"
   integrity sha512-phJfQVBuaJM5raOpJjSfkiD6BpbCE4Ns//LaXl6wGYtUBY83nWS6Rf9tXm2e8VaK60JEjYldbPif/A2B1C2gNA==
@@ -6939,14 +6917,6 @@ react-native-web@0.21.4:
     postcss-value-parser "^4.2.0"
     styleq "^0.1.3"
 
-react-native-webview@14.0.1:
-  version "14.0.1"
-  resolved "https://registry.yarnpkg.com/react-native-webview/-/react-native-webview-14.0.1.tgz#b851c9e4d185c089575ef3eb3d8e15f42845ada7"
-  integrity sha512-lBUuvFk459Mo+5vUNqwzGvn+I8rDJE6zvOulG2hWWudeEOJfWTsQwOfuYnRu+27djUIXrESFfC+EQE3PGu+FWA==
-  dependencies:
-    escape-string-regexp "^4.0.0"
-    invariant "2.2.4"
-
 react-native-worklets@0.13.0:
   version "0.13.0"
   resolved "https://registry.yarnpkg.com/react-native-worklets/-/react-native-worklets-0.13.0.tgz#57f2d3037a1aad338f666c8ac2b4f2327749b975"
@@ -7310,7 +7280,7 @@ setprototypeof@~1.2.0:
   resolved "https://registry.yarnpkg.com/setprototypeof/-/setprototypeof-1.2.0.tgz#66c9a24a73f9fc28cbe66b09fed3d33dcaf1b424"
   integrity sha512-E5LDX7Wrp85Kil5bhZv46j8jOeboKq5JMmYM3gVGdGH8xFpPWXUMsNrlODCrkoxMEeNi/XZIwuRvY4XNwYMJpw==
 
-sf-symbols-typescript@^2.0.0, sf-symbols-typescript@^2.1.0, sf-symbols-typescript@^2.2.0:
+sf-symbols-typescript@^2.0.0, sf-symbols-typescript@^2.1.0:
   version "2.2.0"
   resolved "https://registry.yarnpkg.com/sf-symbols-typescript/-/sf-symbols-typescript-2.2.0.tgz#926d6e0715e3d8784cadf7658431e36581254208"
   integrity sha512-TPbeg0b7ylrswdGCji8FRGFAKuqbpQlLbL8SOle3j1iHSs5Ob5mhvMAxWN2UItOjgALAB5Zp3fmMfj8mbWvXKw==
