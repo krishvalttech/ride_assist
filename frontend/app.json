@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "RideAssist",
-    "slug": "rideassist",
+    "name": "K Assist",
+    "slug": "krishna86",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "rideassist",
+    "scheme": "kassist",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
@@ -42,6 +42,17 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "d9c02173-f442-41ae-9534-00372e9b2f8c"
+      }
+    },
+    "owner": "krish86s-team"
   }
 }

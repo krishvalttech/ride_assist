@@ -38,3 +38,15 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+# Gradle generated files
+.gradle/
+**/.gradle/
+
+# Android build outputs
+**/build/
+**/local.properties
+
+# Environment secrets
+.env
+.env.*
+!.env.example

@@ -1,7 +1,9 @@
 package expo.modules.rideassist
 
 import android.accessibilityservice.AccessibilityService
+import android.content.SharedPreferences
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import org.json.JSONObject
 
 /**
@@ -21,15 +23,16 @@ import org.json.JSONObject
  *   security prompts, CAPTCHAs, or OTP screens.
  */
 class RideAssistAccessibilityService : AccessibilityService() {
-
-    private var lastEmitPerPackage: MutableMap<String, Long> = HashMap()
-    private var enabled = false
-
     companion object {
+        const val RATE_LIMIT_MS = 2000L
+
         /** Live instance, used only by the isolated, opt-in RideAssistAcceptAdapter. */
         @Volatile
         var instance: RideAssistAccessibilityService? = null
     }
+
+    private val lastEmitPerPackage: MutableMap<String, Long> = HashMap()
+    private var enabled = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -46,9 +49,9 @@ class RideAssistAccessibilityService : AccessibilityService() {
         val sourcePackage = event.packageName?.toString() ?: return
         val platform = platformForPackage(sourcePackage, prefs) ?: return
 
-        // Rate limit: at most one observation per package per 2 seconds.
+        // Rate limit: at most one observation per package per RATE_LIMIT_MS.
         val now = System.currentTimeMillis()
-        val last = lastEmitPerPackage[sourcePackage] ?: 0
+        val last = lastEmitPerPackage[sourcePackage] ?: 0L
         if (now - last < RATE_LIMIT_MS) return
         lastEmitPerPackage[sourcePackage] = now
 
@@ -67,17 +70,24 @@ class RideAssistAccessibilityService : AccessibilityService() {
             put("removed", false)
         }
         RideAssistEventHub.emit(payload)
-        android.util.Log.d("RideAssist", "screen observation emitted (redacted, rate-limited)")
+        android.util.Log.d("RideAssist", "screen observation emitted (rate-limited)")
     }
 
-    private fun collectVisibleTexts(event: AccessibilityEvent, maxNodes: Int, maxCharsPerNode: Int): List<String> {
+    private fun collectVisibleTexts(
+        event: AccessibilityEvent,
+        maxNodes: Int,
+        maxCharsPerNode: Int
+    ): List<String> {
         val out = ArrayList<String>()
-        val queue = ArrayDeque<android.view.accessibility.AccessibilityNodeInfo>()
-        // FIX: event.source is only the changed node (often an empty container),
-        // which is why full ride cards were never read. Use the active window
-        // root of the SAME driver-app package instead.
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+
+        // event.source is only the changed node (often an empty container), so
+        // prefer the active window root when it belongs to the same app.
         val root = rootInActiveWindow
-        val sourceNode = if (root != null && root.packageName?.toString() == event.packageName?.toString()) root else (event.source ?: return out)
+        val sourceNode =
+            if (root != null && root.packageName?.toString() == event.packageName?.toString()) root
+            else (event.source ?: return out)
+
         queue.add(sourceNode)
         var visited = 0
         while (queue.isNotEmpty() && visited < maxNodes) {
@@ -85,7 +95,9 @@ class RideAssistAccessibilityService : AccessibilityService() {
             visited += 1
             val text = node.text?.toString()
             if (!text.isNullOrBlank()) out.add(text.take(maxCharsPerNode))
-            node.contentDescription?.toString()?.let { if (it.isNotBlank()) out.add(it.take(maxCharsPerNode)) }
+            node.contentDescription?.toString()?.let {
+                if (it.isNotBlank()) out.add(it.take(maxCharsPerNode))
+            }
             for (i in 0 until node.childCount) {
                 node.getChild(i)?.let { queue.add(it) }
             }
@@ -93,16 +105,16 @@ class RideAssistAccessibilityService : AccessibilityService() {
         return out
     }
 
-    private fun platformForPackage(packageName: String, prefs: android.content.SharedPreferences): String? {
+    private fun platformForPackage(packageName: String, prefs: SharedPreferences): String? {
         val synced = prefs.getString(RideAssistModule.KEY_PLATFORM_PACKAGES, null)
         if (synced != null) {
             try {
-                val map = org.json.JSONObject(synced)
+                val map = JSONObject(synced)
                 for (key in map.keys()) {
                     if (map.optString(key) == packageName) return key
                 }
             } catch (_: Exception) {
-                // fall through
+                // fall through to the default mapping
             }
         }
         return RideEventNormalizer.platformForPackage(packageName)
