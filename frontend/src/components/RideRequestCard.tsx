@@ -94,6 +94,21 @@ export const RideRequestCard = memo(function RideRequestCard({ ride, onAccept, o
         </View>
       </View>
 
+      {ride.pickupLocation || ride.dropLocation ? (
+        <View style={styles.locationsWrap}>
+          {ride.pickupLocation ? (
+            <Text style={styles.locationText} testID={`request-pickup-loc-${ride.id}`} numberOfLines={1}>
+              Pickup: {ride.pickupLocation}
+            </Text>
+          ) : null}
+          {ride.dropLocation ? (
+            <Text style={styles.locationText} testID={`request-drop-loc-${ride.id}`} numberOfLines={1}>
+              Drop: {ride.dropLocation}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
       <ConfidenceBar value={ride.confidence} testID={`request-confidence-${ride.id}`} />
 
       {ride.missingFields.length > 0 ? (
@@ -266,6 +281,14 @@ const useStyles = makeStyles((colors) => ({
     fontFamily: fonts.bodySemiBold,
     fontSize: 13,
     color: colors.onSurface,
+  },
+  locationsWrap: {
+    gap: 2,
+  },
+  locationText: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 12,
+    color: colors.onSurfaceSecondary,
   },
   missingWrap: {
     gap: 2,

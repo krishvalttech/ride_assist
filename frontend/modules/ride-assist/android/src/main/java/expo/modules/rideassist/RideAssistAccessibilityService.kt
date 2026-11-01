@@ -18,7 +18,8 @@ import org.json.JSONObject
  *   input injection.
  * - Only events from configured driver-app packages are inspected.
  * - Only visible node text is collected (bounded walk, capped depth/count).
- * - Emits are rate-limited per package; no continuous polling.
+ * - Emits are rate-limited per package; legitimate ride-request cards bypass
+ *   non-ride cooldowns so ride requests are never silently discarded.
  * - Never reads other apps, hidden data, or private databases; never bypasses
  *   security prompts, CAPTCHAs, or OTP screens.
  */
@@ -31,7 +32,10 @@ class RideAssistAccessibilityService : AccessibilityService() {
         var instance: RideAssistAccessibilityService? = null
     }
 
+    private val lock = Any()
     private val lastEmitPerPackage: MutableMap<String, Long> = HashMap()
+    private val lastRideHashPerPackage: MutableMap<String, Int> = HashMap()
+    @Volatile
     private var enabled = false
 
     override fun onServiceConnected() {
@@ -49,26 +53,43 @@ class RideAssistAccessibilityService : AccessibilityService() {
         val sourcePackage = event.packageName?.toString() ?: return
         val platform = platformForPackage(sourcePackage, prefs) ?: return
 
-        // Rate limit: at most one observation per package per RATE_LIMIT_MS.
-        val now = System.currentTimeMillis()
-        val last = lastEmitPerPackage[sourcePackage] ?: 0L
-        if (now - last < RATE_LIMIT_MS) return
-        lastEmitPerPackage[sourcePackage] = now
-
         val texts = collectVisibleTexts(event, maxNodes = 120, maxCharsPerNode = 200)
         if (texts.isEmpty()) return
 
-        val combined = texts.joinToString(" ")
-        val payload = JSONObject().apply {
-            put("id", "screen_${sourcePackage}_$now")
-            put("platform", platform)
-            put("title", "")
-            put("text", combined.take(300))
-            put("subText", "")
-            put("postedAt", now)
-            put("source", "screen")
-            put("removed", false)
+        val combined = texts.joinToString(" ").trim()
+        if (combined.isEmpty()) return
+
+        val now = System.currentTimeMillis()
+        val shouldEmit = synchronized(lock) {
+            val lastEmit = lastEmitPerPackage[sourcePackage] ?: 0L
+            val lastRideHash = lastRideHashPerPackage[sourcePackage]
+            val allow = RideEventNormalizer.shouldEmitScreenObservation(
+                text = combined,
+                nowMs = now,
+                lastEmitMs = lastEmit,
+                lastRideHash = lastRideHash,
+                rateLimitMs = RATE_LIMIT_MS,
+            )
+            if (allow) {
+                lastEmitPerPackage[sourcePackage] = now
+                if (RideEventNormalizer.looksLikeRideScreen(combined)) {
+                    lastRideHashPerPackage[sourcePackage] = combined.hashCode()
+                }
+            }
+            allow
         }
+        if (!shouldEmit) return
+
+        val payload = RideEventNormalizer.buildEvent(
+            id = "screen_${sourcePackage}_$now",
+            platform = platform,
+            title = "",
+            text = combined,
+            subText = "",
+            postedAt = now,
+            source = "screen",
+            removed = false,
+        )
         RideAssistEventHub.emit(payload)
         android.util.Log.d("RideAssist", "screen observation emitted (rate-limited)")
     }
@@ -96,7 +117,7 @@ class RideAssistAccessibilityService : AccessibilityService() {
             val text = node.text?.toString()
             if (!text.isNullOrBlank()) out.add(text.take(maxCharsPerNode))
             node.contentDescription?.toString()?.let {
-                if (it.isNotBlank()) out.add(it.take(maxCharsPerNode))
+                if (it.isNotBlank() && it != text) out.add(it.take(maxCharsPerNode))
             }
             for (i in 0 until node.childCount) {
                 node.getChild(i)?.let { queue.add(it) }
@@ -105,19 +126,14 @@ class RideAssistAccessibilityService : AccessibilityService() {
         return out
     }
 
+    fun resolvePlatform(packageName: String): String? {
+        val prefs = getSharedPreferences(RideAssistModule.PREFS_NAME, MODE_PRIVATE)
+        return platformForPackage(packageName, prefs)
+    }
+
     private fun platformForPackage(packageName: String, prefs: SharedPreferences): String? {
         val synced = prefs.getString(RideAssistModule.KEY_PLATFORM_PACKAGES, null)
-        if (synced != null) {
-            try {
-                val map = JSONObject(synced)
-                for (key in map.keys()) {
-                    if (map.optString(key) == packageName) return key
-                }
-            } catch (_: Exception) {
-                // fall through to the default mapping
-            }
-        }
-        return RideEventNormalizer.platformForPackage(packageName)
+        return RideEventNormalizer.resolvePlatform(packageName, synced)
     }
 
     override fun onInterrupt() {

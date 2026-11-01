@@ -19,7 +19,43 @@ export interface EvaluateInput {
   pickupDistanceKm?: number;
   tripDistanceKm?: number;
   category?: string;
+  pickupLocation?: string;
+  dropLocation?: string;
   missingFields: MissingField[];
+}
+
+/** Validate rule settings and return human-readable error strings (empty = valid). */
+export function validateRuleSettings(settings: RuleSettings): string[] {
+  const problems: string[] = [];
+  if (!Number.isFinite(settings.minFare) || settings.minFare < 0 || settings.minFare > 10000) {
+    problems.push("Minimum fare must be between 0 and 10000 ₹");
+  }
+  if (!Number.isFinite(settings.maxPickupKm) || settings.maxPickupKm < 0.5 || settings.maxPickupKm > 50) {
+    problems.push("Max pickup distance must be between 0.5 and 50 km");
+  }
+  if (!Number.isFinite(settings.minTripKm) || settings.minTripKm < 0 || settings.minTripKm > 200) {
+    problems.push("Min trip distance must be between 0 and 200 km");
+  }
+  if (!Number.isFinite(settings.minFarePerKm) || settings.minFarePerKm < 0 || settings.minFarePerKm > 500) {
+    problems.push("Min fare per km must be between 0 and 500 ₹/km");
+  }
+  if (!Number.isFinite(settings.maxRequestAgeSec) || settings.maxRequestAgeSec < 10 || settings.maxRequestAgeSec > 600) {
+    problems.push("Max request age must be between 10 and 600 sec");
+  }
+  if (
+    !Number.isInteger(settings.startHour) ||
+    settings.startHour < 0 ||
+    settings.startHour > 23 ||
+    !Number.isInteger(settings.endHour) ||
+    settings.endHour < 0 ||
+    settings.endHour > 23
+  ) {
+    problems.push("Operating hours must be between 0 and 23");
+  }
+  if (!Number.isFinite(settings.minConfidence) || settings.minConfidence < 0.3 || settings.minConfidence > 0.95) {
+    problems.push("Confidence threshold must be between 30% and 95%");
+  }
+  return problems;
 }
 
 /** Hour-of-day window check; supports wrap-past-midnight (e.g. 22 → 6). */
@@ -171,6 +207,25 @@ export function evaluateRide(
         ? `Category "${input.category}" is allowed`
         : `Category "${input.category}" is not in the allowed list (${allowed.join(", ")})`,
     );
+  }
+
+  // 9b. Destination filter (when excludedDropKeywords are configured).
+  const excludedKeywords = (settings.excludedDropKeywords ?? []).map((k) => k.trim()).filter(Boolean);
+  if (excludedKeywords.length > 0) {
+    if (!input.dropLocation) {
+      push("destination", "Destination filter", null, "Destination not detected — check skipped");
+    } else {
+      const lowerDrop = input.dropLocation.toLowerCase();
+      const matched = excludedKeywords.find((kw) => lowerDrop.includes(kw.toLowerCase()));
+      push(
+        "destination",
+        "Destination filter",
+        !matched,
+        matched
+          ? `Destination "${input.dropLocation}" matches excluded area "${matched}"`
+          : `Destination "${input.dropLocation}" is allowed`,
+      );
+    }
   }
 
   // 10. Data confidence.

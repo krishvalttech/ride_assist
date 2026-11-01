@@ -17,28 +17,34 @@ interface NotificationTexts {
 const CATEGORY_PATTERNS: [RegExp, string][] = [
   [/\bbike\b|\bmotorcycle\b|\bmoto\b/i, "bike"],
   [/\bauto\b|\brickshaw\b/i, "auto"],
-  [/\bcab\b|\bsedan\b|\bhatchback\b|\bprime\b|\bmini\b|\bcar\b/i, "cab"],
+  [/\bcab\b|\bsedan\b|\bhatchback\b|\bprime\b|\bmini\b|\bcar\b|\bsuv\b|\bxl\b/i, "cab"],
 ];
 
 const PLATFORM_RIDE_KEYWORDS: Record<RidePlatform, RegExp[]> = {
-  rapido: [/ride\s*request/i, /new\s*ride/i, /\bcaptain\b/i],
-  uber: [/trip\s*request/i, /new\s*trip/i, /ride\s*request/i, /\bdriver\s*app\b/i],
-  ola: [/ride\s*request/i, /new\s*ride/i],
+  rapido: [/ride\s*request/i, /new\s*ride/i, /\bcaptain\b/i, /\bbooking\s*request\b/i],
+  uber: [/trip\s*request/i, /new\s*trip/i, /ride\s*request/i, /\bdriver\s*app\b/i, /\bexclusive\s*trip\b/i],
+  ola: [/ride\s*request/i, /new\s*ride/i, /\bbooking\s*request\b/i],
 };
 
 const FARE_PATTERNS: RegExp[] = [
   /₹\s*([0-9]+(?:\.[0-9]{1,2})?)/,
-  /\bfare\b[^0-9\n]{0,10}([0-9]+(?:\.[0-9]{1,2})?)/i,
+  /\b(?:rs\.?|inr)\s*([0-9]+(?:\.[0-9]{1,2})?)/i,
+  /\b(?:fare|earning|earnings|est\.?\s*(?:fare|earning))\b[^0-9\n]{0,12}([0-9]+(?:\.[0-9]{1,2})?)/i,
 ];
 
-const PICKUP_PATTERNS: RegExp[] = [
+const PICKUP_KM_PATTERNS: RegExp[] = [
   /\bpickup\b[^0-9\n]{0,14}([0-9]+(?:\.[0-9]+)?)\s*km/i,
   /\b([0-9]+(?:\.[0-9]+)?)\s*km\s*(?:away|to\s*pickup|pickup)/i,
 ];
 
+const PICKUP_M_PATTERNS: RegExp[] = [
+  /\bpickup\b[^0-9\n]{0,14}([0-9]{2,4})\s*(?:m|meters|metres)\b/i,
+  /\b([0-9]{2,4})\s*(?:m|meters|metres)\s*(?:away|to\s*pickup|pickup)\b/i,
+];
+
 const TRIP_PATTERNS: RegExp[] = [
-  /\btrip\b[^0-9\n]{0,14}([0-9]+(?:\.[0-9]+)?)\s*km/i,
-  /\b([0-9]+(?:\.[0-9]+)?)\s*km\s*trip/i,
+  /\b(?:trip|ride\s*distance|drop\s*distance|total\s*distance)\b[^0-9\n]{0,14}([0-9]+(?:\.[0-9]+)?)\s*km/i,
+  /\b([0-9]+(?:\.[0-9]+)?)\s*km\s*(?:trip|ride|drop)\b/i,
 ];
 
 function firstMatch(text: string, patterns: RegExp[]): number | undefined {
@@ -49,6 +55,14 @@ function firstMatch(text: string, patterns: RegExp[]): number | undefined {
       if (Number.isFinite(value) && value >= 0) return value;
     }
   }
+  return undefined;
+}
+
+function extractPickupDistanceKm(text: string): number | undefined {
+  const km = firstMatch(text, PICKUP_KM_PATTERNS);
+  if (km !== undefined) return km;
+  const meters = firstMatch(text, PICKUP_M_PATTERNS);
+  if (meters !== undefined) return Math.round((meters / 1000) * 100) / 100;
   return undefined;
 }
 
@@ -70,7 +84,16 @@ export interface ParseOptions {
 }
 
 const ACCEPT_LABEL_RE = /\b(accept|tap to accept|swipe to accept)\b/i;
-const DROP_RE = /\bdrop(?:\s*location)?\b\s*[:\-–]?\s*([^·•|\n]{3,60})/i;
+const PICKUP_LOC_RE = /\bpickup(?:\s*(?:at|from|location))?\s*[:\-–]\s*(?![0-9]+(?:\.[0-9]+)?\s*(?:km|m\b))([^·•|\n]{3,60})/i;
+const DROP_RE = /\b(?:drop|destination|to)(?:\s*location)?\b\s*[:\-–]\s*(?![0-9]+(?:\.[0-9]+)?\s*(?:km|m\b))([^·•|\n]{3,60})/i;
+
+function cleanLocationLabel(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  // Strip trailing "Accept" / "Tap to accept" if captured from a flat screen string.
+  const stripped = raw.replace(/\b(tap\s+to\s+accept|swipe\s+to\s+accept|accept\s+ride|accept\s+trip|accept)\s*$/i, "").trim();
+  if (stripped.length < 2) return undefined;
+  return redactSensitive(stripped).slice(0, 60);
+}
 
 export function parseRideNotification(platform: RidePlatform, texts: NotificationTexts, options: ParseOptions = {}): ParsedRide {
   const title = (texts.title ?? "").slice(0, 300);
@@ -79,11 +102,13 @@ export function parseRideNotification(platform: RidePlatform, texts: Notificatio
   const combined = `${title} ${subText} ${body}`;
 
   const fare = firstMatch(combined, FARE_PATTERNS);
-  const pickupDistanceKm = firstMatch(combined, PICKUP_PATTERNS);
+  const pickupDistanceKm = extractPickupDistanceKm(combined);
   const tripDistanceKm = firstMatch(combined, TRIP_PATTERNS);
   const category = detectCategory(combined);
+  const pickupMatch = combined.match(PICKUP_LOC_RE);
+  const pickupLocation = cleanLocationLabel(pickupMatch?.[1]);
   const dropMatch = combined.match(DROP_RE);
-  const dropLocation = dropMatch ? redactSensitive(dropMatch[1].trim()).slice(0, 60) : undefined;
+  const dropLocation = cleanLocationLabel(dropMatch?.[1]);
 
   // Ride requests shown on screen (Rapido/Ola full-screen cards) usually lack
   // the "ride request" keyword: an Accept control PLUS a fare or km value counts.
@@ -113,6 +138,7 @@ export function parseRideNotification(platform: RidePlatform, texts: Notificatio
     pickupDistanceKm,
     tripDistanceKm,
     category,
+    pickupLocation,
     dropLocation,
     confidence,
     missingFields,

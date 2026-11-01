@@ -41,8 +41,18 @@ export default function RequestsScreen() {
       toast.show(result.message, result.ok ? "success" : "warning");
       return;
     }
-    // Real requests in manual mode: guide the user through the driver app and
-    // collect explicit confirmation — never mark accepted on a tap alone.
+    const provider = acceptanceManager.providerFor(ride);
+    if (provider.name !== "user-manual" && (await provider.isSupported(ride.platform))) {
+      toast.show("Requesting acceptance via Accessibility…", "info");
+      const result = await acceptanceManager.initiateAcceptance(ride.id);
+      if (!result.manualFallback) {
+        toast.show(result.message, result.ok ? "success" : "warning");
+        return;
+      }
+      toast.show(result.message, "warning");
+    }
+    // Manual mode or fallback when automated acceptance is unavailable:
+    // guide the user through the driver app and collect explicit confirmation.
     setVerifying(ride);
   };
 
@@ -53,7 +63,10 @@ export default function RequestsScreen() {
 
   const handleManualConfirm = (accepted: boolean) => {
     if (!verifying) return;
-    const result = acceptanceManager.confirmManualEvidence(verifying.id, accepted);
+    const result =
+      verifying.status === "UNKNOWN"
+        ? acceptanceManager.verifyUnknownOutcome(verifying.id, accepted)
+        : acceptanceManager.confirmManualEvidence(verifying.id, accepted);
     toast.show(result.message, accepted ? "success" : "warning");
     setVerifying(null);
   };

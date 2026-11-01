@@ -6,7 +6,8 @@ import android.view.accessibility.AccessibilityNodeInfo
  * Isolated, opt-in acceptance adapter (UNVERIFIED on real driver-app versions).
  *
  * How it works — standard Android accessibility API only:
- * 1. The active window must belong to the requested platform's package.
+ * 1. The active window must belong to the requested platform's package (using
+ *    synced custom package IDs or default package mappings).
  * 2. If a fare is known, that fare must be visible on screen (guards against
  *    tapping a DIFFERENT request than the one that matched the filters).
  * 3. Exactly one visible node whose text/description is an accept label is
@@ -37,7 +38,7 @@ object RideAssistAcceptAdapter {
         val service = RideAssistAccessibilityService.instance ?: return null
         val root = service.rootInActiveWindow ?: return null
         val pkg = root.packageName?.toString() ?: return null
-        return if (RideEventNormalizer.platformForPackage(pkg) == platform) root else null
+        return if (service.resolvePlatform(pkg) == platform) root else null
     }
 
     private fun walk(root: AccessibilityNodeInfo, maxNodes: Int = 250, visit: (AccessibilityNodeInfo) -> Unit) {

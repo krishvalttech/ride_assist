@@ -25,10 +25,29 @@ describe("platform parsers", () => {
     expect(parsed.tripDistanceKm).toBe(8.5);
   });
 
+  it("extracts Rs./INR fares, meter pickup distances, and pickup/drop locations when present", () => {
+    const parsed = parseRideNotification(
+      "ola",
+      texts(
+        "New ride request",
+        "Booking request — Rs. 245 · Pickup 800 m away · Ride distance 9.2 km · Pickup: Indiranagar · Drop: Koramangala · Auto",
+      ),
+    );
+    expect(parsed.isRideRequest).toBe(true);
+    expect(parsed.fare).toBe(245);
+    expect(parsed.pickupDistanceKm).toBe(0.8);
+    expect(parsed.tripDistanceKm).toBe(9.2);
+    expect(parsed.category).toBe("auto");
+    expect(parsed.pickupLocation).toBe("Indiranagar");
+    expect(parsed.dropLocation).toBe("Koramangala");
+  });
+
   it("marks missing fields explicitly instead of inventing values", () => {
     const parsed = parseRideNotification("uber", texts("Trip request", "New trip request — Pickup 2.1 km · Trip 9.0 km"));
     expect(parsed.isRideRequest).toBe(true);
     expect(parsed.fare).toBeUndefined();
+    expect(parsed.pickupLocation).toBeUndefined();
+    expect(parsed.dropLocation).toBeUndefined();
     expect(parsed.missingFields).toContain("fare");
   });
 

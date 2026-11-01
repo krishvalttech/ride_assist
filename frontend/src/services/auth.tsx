@@ -12,23 +12,84 @@ export interface AuthUser {
   email: string;
 }
 
-async function call<T>(path: string, body?: object, token?: string | null): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  let res: Response;
-  try {
-    res = await fetch(`${BASE}${path}`, {
-      method: body ? "POST" : "GET",
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  } catch {
-    throw new Error("No internet connection — try again");
+// async function call<T>(path: string, body?: object, token?: string | null): Promise<T> {
+//   const headers: Record<string, string> = { "Content-Type": "application/json" };
+//   if (token) headers.Authorization = `Bearer ${token}`;
+//   let res: Response;
+//   try {
+//     res = await fetch(`${BASE}${path}`, {
+//       method: body ? "POST" : "GET",
+//       headers,
+//       body: body ? JSON.stringify(body) : undefined,
+//     });
+//   } catch {
+//     throw new Error("No internet connection — try again");
+//   }
+//   const data = await res.json().catch(() => ({}));
+
+//   if (!res.ok) {
+//     const detail = (data as { detail?: unknown }).detail;
+//     throw new Error(typeof detail === "string" ? detail : "Something went wrong — try again");
+//   }
+//   return data as T;
+// }
+
+async function call<T>(
+  path: string,
+  body?: object,
+  token?: string | null
+): Promise<T> {
+  if (!process.env.EXPO_PUBLIC_BACKEND_URL) {
+    throw new Error("Backend URL is missing. Check your .env file.");
   }
-  const data = await res.json().catch(() => ({}));
+
+  const BASE = `${process.env.EXPO_PUBLIC_BACKEND_URL.replace(/\/$/, "")}/api/auth`;
+  const url = `${BASE}${path}`;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  let res: Response;
+
+  try {
+    res = await fetch(url, {
+      method: body !== undefined ? "POST" : "GET",
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (error) {
+    console.error("API Network Error:", error);
+    throw new Error(
+      "Unable to connect to backend. Check your API URL and server."
+    );
+  }
+
+  const raw = await res.text();
+  let data: any = {};
+
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    data = { message: raw };
+  }
+
   if (!res.ok) {
-    const detail = (data as { detail?: unknown }).detail;
-    throw new Error(typeof detail === "string" ? detail : "Something went wrong — try again");
+    const message =
+      data?.detail ||
+      data?.message ||
+      data?.error ||
+      `Request failed with status ${res.status}`;
+
+    throw new Error(
+      typeof message === "string"
+        ? message
+        : JSON.stringify(message)
+    );
   }
   return data as T;
 }

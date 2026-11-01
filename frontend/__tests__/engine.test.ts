@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 
-import { evaluateRide, hourInRange, type EvaluateInput } from "@/src/rules/engine";
+import { evaluateRide, hourInRange, validateRuleSettings, type EvaluateInput } from "@/src/rules/engine";
 import { DEFAULT_SETTINGS, defaultPlatformConfigs } from "@/src/rules/defaults";
 
 // Local 12:00 — independent of the test runner's timezone.
@@ -122,6 +122,23 @@ describe("rules engine", () => {
   it("rejects when the platform is disabled", () => {
     const settings = { ...DEFAULT_SETTINGS, platformEnabled: { ...DEFAULT_SETTINGS.platformEnabled, rapido: false } };
     expect(evaluate({}, settings).eligible).toBe(false);
+  });
+
+  it("filters destinations against excludedDropKeywords when configured", () => {
+    const settings = { ...DEFAULT_SETTINGS, excludedDropKeywords: ["airport", "toll"] };
+    const rejected = evaluate({ dropLocation: "Kempegowda Airport Terminal 1" }, settings);
+    expect(rejected.eligible).toBe(false);
+    expect(rejected.reasons.some((r) => r.includes("excluded area"))).toBe(true);
+
+    const allowed = evaluate({ dropLocation: "MG Road Metro" }, settings);
+    expect(allowed.eligible).toBe(true);
+  });
+
+  it("validates rule settings inputs", () => {
+    expect(validateRuleSettings(DEFAULT_SETTINGS)).toEqual([]);
+    expect(validateRuleSettings({ ...DEFAULT_SETTINGS, minFare: -10 }).length).toBeGreaterThan(0);
+    expect(validateRuleSettings({ ...DEFAULT_SETTINGS, maxPickupKm: 0.1 }).length).toBeGreaterThan(0);
+    expect(validateRuleSettings({ ...DEFAULT_SETTINGS, minConfidence: 0.1 }).length).toBeGreaterThan(0);
   });
 
   it("is deterministic — identical inputs produce identical decisions", () => {

@@ -53,6 +53,16 @@
     "expo-doctor": "1.19.8",
     "typescript": "6.0.3"
   },
+  "expo": {
+    "install": {
+      "exclude": [
+        "@expo/metro-runtime",
+        "expo",
+        "expo-router",
+        "react-native-screens"
+      ]
+    }
+  },
   "resolutions": {
     "@eslint/plugin-kit": "0.3.4",
     "postcss": "8.5.28",

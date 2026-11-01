@@ -4,7 +4,6 @@ import android.app.Notification
 import android.content.Context
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import org.json.JSONObject
 
 /**
  * Detects ride request notifications from EXPLICITLY configured driver apps.
@@ -58,23 +57,28 @@ class RideAssistNotificationListenerService : NotificationListenerService() {
         // Inbox-style and custom-view notifications often leave EXTRA_TEXT empty:
         // fall back to text lines, info text and ticker so fare/km are not lost.
         val lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.joinToString(" ") { it.toString() }
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+        val baseText = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
             ?.takeIf { it.isNotBlank() }
             ?: lines
             ?: sbn.notification.tickerText?.toString()
             ?: ""
-        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
+        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.trim()
+        val combinedText = when {
+            bigText.isNullOrBlank() -> baseText
+            baseText.isBlank() || bigText.contains(baseText, ignoreCase = true) -> bigText
+            else -> "$baseText · $bigText"
+        }
         val subText = listOfNotNull(
-            extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString(),
-            extras.getCharSequence(Notification.EXTRA_INFO_TEXT)?.toString(),
-            extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT)?.toString(),
-        ).joinToString(" ").ifBlank { bigText ?: "" }
+            extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.takeIf { it.isNotBlank() },
+            extras.getCharSequence(Notification.EXTRA_INFO_TEXT)?.toString()?.takeIf { it.isNotBlank() },
+            extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT)?.toString()?.takeIf { it.isNotBlank() },
+        ).joinToString(" ")
 
         val event = RideEventNormalizer.buildEvent(
             id = sbn.key ?: "${sbn.packageName}:${sbn.postTime}",
             platform = platform,
             title = title,
-            text = if (bigText.isNullOrBlank()) text else bigText,
+            text = combinedText,
             subText = subText,
             postedAt = sbn.postTime,
             source = "notification",
@@ -90,17 +94,6 @@ class RideAssistNotificationListenerService : NotificationListenerService() {
 
     private fun platformForPackage(packageName: String, prefs: android.content.SharedPreferences): String? {
         val synced = prefs.getString(RideAssistModule.KEY_PLATFORM_PACKAGES, null)
-        if (synced != null) {
-            try {
-                val map = org.json.JSONObject(synced)
-                // map: platform -> packageName; invert for lookup
-                for (key in map.keys()) {
-                    if (map.optString(key) == packageName) return key
-                }
-            } catch (_: Exception) {
-                // fall through to defaults
-            }
-        }
-        return RideEventNormalizer.platformForPackage(packageName)
+        return RideEventNormalizer.resolvePlatform(packageName, synced)
     }
 }

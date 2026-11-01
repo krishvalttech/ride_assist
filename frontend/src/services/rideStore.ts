@@ -244,7 +244,11 @@ class RideStore {
       expiredOnRecovery > 0 ? { recoveredAsExpired: expiredOnRecovery } : undefined,
     );
 
+    if (this.sweepTimer) clearInterval(this.sweepTimer);
     this.sweepTimer = setInterval(() => this.sweepExpiry(), EXPIRY_SWEEP_MS);
+    if (typeof (this.sweepTimer as unknown as { unref?: () => void })?.unref === "function") {
+      (this.sweepTimer as unknown as { unref: () => void }).unref();
+    }
     this.notify();
     this.schedulePersist();
   }
@@ -262,6 +266,9 @@ class RideStore {
     this.persistTimer = setTimeout(() => {
       void this.persist();
     }, PERSIST_DEBOUNCE_MS);
+    if (typeof (this.persistTimer as unknown as { unref?: () => void })?.unref === "function") {
+      (this.persistTimer as unknown as { unref: () => void }).unref();
+    }
   }
 
   private async persist(): Promise<void> {
@@ -360,6 +367,8 @@ class RideStore {
       // Same active request seen again (notification update / repeat delivery).
       const updated: RideRequest = {
         ...existing,
+        pickupLocation: existing.pickupLocation ?? parsed.pickupLocation,
+        dropLocation: existing.dropLocation ?? parsed.dropLocation,
         observationCount: existing.observationCount + 1,
         updatedAt: now,
         simulated: existing.simulated || !!event.simulated,
@@ -383,6 +392,7 @@ class RideStore {
       pickupDistanceKm: parsed.pickupDistanceKm,
       tripDistanceKm: parsed.tripDistanceKm,
       category: parsed.category,
+      pickupLocation: parsed.pickupLocation,
       dropLocation: parsed.dropLocation,
       detectedAt: event.postedAt,
       confidence: parsed.confidence,
@@ -425,6 +435,8 @@ class RideStore {
         pickupDistanceKm: ride.pickupDistanceKm,
         tripDistanceKm: ride.tripDistanceKm,
         category: ride.category,
+        pickupLocation: ride.pickupLocation,
+        dropLocation: ride.dropLocation,
         missingFields: ride.missingFields,
       },
       this.state.settings,
@@ -698,6 +710,8 @@ class RideStore {
           pickupDistanceKm: r.pickupDistanceKm ?? null,
           tripDistanceKm: r.tripDistanceKm ?? null,
           category: r.category ?? null,
+          pickupLocation: r.pickupLocation ?? null,
+          dropLocation: r.dropLocation ?? null,
           confidence: r.confidence,
           detectedAt: new Date(r.detectedAt).toISOString(),
           missingFields: r.missingFields,

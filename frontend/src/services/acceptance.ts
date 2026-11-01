@@ -127,18 +127,20 @@ class AcceptanceManager {
 
   providerFor(ride: RideRequest): AcceptanceProvider {
     if (ride.simulated) return simulatedAcceptanceProvider;
-    const config = rideStore.getSnapshot().platformConfigs.find((p) => p.platform === ride.platform);
+    const snap = rideStore.getSnapshot();
+    const config = snap.platformConfigs.find((p) => p.platform === ride.platform);
     if (config?.acceptanceAssistEnabled && nativeBridge.isAvailable()) return nativeAcceptanceProvider;
     return manualAcceptanceProvider;
   }
 
   /**
-   * User tapped "Accept" on an AWAITING_CONFIRMATION request.
+   * User tapped "Accept" on an AWAITING_CONFIRMATION request (or auto-accept
+   * triggered when explicitly opted in).
    * Runs the selected provider, then collects evidence ONCE.
    * Unknown outcomes land in UNKNOWN status for manual verification —
    * acceptance is never blindly retried.
    */
-  async initiateAcceptance(rideId: string): Promise<{ ok: boolean; message: string }> {
+  async initiateAcceptance(rideId: string): Promise<{ ok: boolean; message: string; manualFallback?: boolean }> {
     if (this.inFlight.has(rideId)) {
       return { ok: false, message: "This request is already being handled" };
     }
@@ -147,12 +149,16 @@ class AcceptanceManager {
     if (ride.status !== "AWAITING_CONFIRMATION") {
       return { ok: false, message: `Request is ${ride.status.replace(/_/g, " ").toLowerCase()} — cannot accept now` };
     }
+    if (ride.acceptance?.attempts?.some((a) => a.outcome === "REQUESTED")) {
+      return { ok: false, message: "Acceptance was already attempted for this request" };
+    }
 
     const provider = this.providerFor(ride);
     this.inFlight.add(rideId);
     try {
       const requested = await provider.requestAcceptance(rideId);
       const attempts = [
+        ...(ride.acceptance?.attempts ?? []),
         { at: Date.now(), outcome: requested.status, reason: requested.reason, provider: provider.name },
       ];
 
@@ -182,7 +188,7 @@ class AcceptanceManager {
         { provider: provider.name, outcome: requested.status },
         rideId,
       );
-      return { ok: true, message: requested.reason ?? MANUAL_REASON };
+      return { ok: true, message: requested.reason ?? MANUAL_REASON, manualFallback: true };
     } finally {
       this.inFlight.delete(rideId);
     }
@@ -270,7 +276,7 @@ class AcceptanceManager {
       return { ok: false, message: `Request is ${ride.status.replace(/_/g, " ").toLowerCase()}` };
     }
     const provider = "user-manual";
-    let current = ride.status === "AWAITING_CONFIRMATION"
+    const current = ride.status === "AWAITING_CONFIRMATION"
       ? rideStore.transition(rideId, "ACCEPT_REQUESTED", {
           patch: {
             acceptance: {
@@ -343,9 +349,8 @@ class AcceptanceManager {
 
   /**
    * Auto-accept hook: only fires for eligible requests when the user chose
-   * "auto (where permitted)" AND a provider actually supports the platform.
-   * Today no verified adapter exists, so this logs honestly and leaves the
-   * request in AWAITING_CONFIRMATION for manual approval.
+   * "auto (where permitted)" AND enabled acceptanceAssistEnabled for that
+   * platform AND a provider actually supports the platform.
    */
   async autoConsider(ride: RideRequest): Promise<void> {
     if (ride.status !== "AWAITING_CONFIRMATION") return;

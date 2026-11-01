@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import dayjs from "dayjs";
 
 import { EmptyState, KeyValueRow, MetricCard, SectionCard, ToggleRow } from "@/src/components/ui";
@@ -28,8 +28,8 @@ export default function EarningsScreen() {
   );
   const maxDay = Math.max(1, ...summary.days.map((d) => d.total));
 
-  return (
-    <View style={styles.screen} testID="earnings-screen">
+  return (   
+    <SafeAreaView style={styles.screen} testID="earnings-screen">
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
@@ -49,12 +49,12 @@ export default function EarningsScreen() {
             Done
           </Text>
         </View>
-        <Text style={styles.note}>
+        {/* <Text style={styles.note}>
           Estimated from the fares detected in ride requests you accepted and confirmed. Final payouts can differ
           (commission, tolls, surge changes, tips).
-        </Text>
+        </Text> */}
 
-        <SectionCard testID="earnings-simulated-card">
+        {/* <SectionCard testID="earnings-simulated-card">
           <ToggleRow
             label="Include simulated rides"
             description="Simulated rides are only for testing the app — turn off to see real earnings only."
@@ -62,7 +62,7 @@ export default function EarningsScreen() {
             onValueChange={setIncludeSimulated}
             testID="earnings-include-simulated-toggle"
           />
-        </SectionCard>
+        </SectionCard> */}
 
         <View style={styles.gridRow}>
           <MetricCard label="Today" value={formatINR(summary.today.total)} tone="success" icon="cash" testID="earnings-today-total" />
@@ -145,7 +145,7 @@ export default function EarningsScreen() {
           </>
         )}
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

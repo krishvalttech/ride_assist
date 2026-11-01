@@ -254,6 +254,24 @@ describe("acceptance — attempts vs confirmations", () => {
     expect(result.ok).toBe(false);
     expect(rideById(ride!.id)?.status).toBe("REJECTED");
   });
+
+  it("prevents duplicate acceptance attempts on the same ride", async () => {
+    const randomSpy = jest.spyOn(Math, "random").mockReturnValue(0.05);
+    try {
+      const ride = await rideStore.ingestNotification(goodCab({ id: "test_dup_accept" }));
+      const [first, second] = await Promise.all([
+        acceptanceManager.initiateAcceptance(ride!.id),
+        acceptanceManager.initiateAcceptance(ride!.id),
+      ]);
+      expect(first.ok).toBe(true);
+      expect(second.ok).toBe(false);
+      expect(second.message).toMatch(/already/i);
+      await waitFor(() => rideById(ride!.id)?.status === "ACCEPTED");
+      expect(rideById(ride!.id)?.acceptance?.attempts).toHaveLength(1);
+    } finally {
+      randomSpy.mockRestore();
+    }
+  }, 15000);
 });
 
 describe("diagnostics export", () => {

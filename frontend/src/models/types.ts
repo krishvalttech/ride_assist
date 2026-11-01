@@ -64,6 +64,7 @@ export interface RideRequest {
   pickupDistanceKm?: number;
   tripDistanceKm?: number;
   category?: string;
+  pickupLocation?: string;
   dropLocation?: string;
   detectedAt: number;
   confidence: number;
@@ -128,6 +129,8 @@ export interface RuleSettings {
   platformEnabled: Record<RidePlatform, boolean>;
   allowedCategories: Record<RidePlatform, string[]>;
   acceptanceMode: AcceptanceMode;
+  /** Optional case-insensitive keywords to reject when found in destination (dropLocation). */
+  excludedDropKeywords?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +225,8 @@ export interface ParsedRide {
   pickupDistanceKm?: number;
   tripDistanceKm?: number;
   category?: string;
+  /** Short, redacted pickup label when the source exposes it. */
+  pickupLocation?: string;
   /** Short, redacted drop label when the source exposes it. */
   dropLocation?: string;
   confidence: number;
