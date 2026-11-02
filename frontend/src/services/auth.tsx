@@ -1,97 +1,15 @@
 // Email/password session: token in secure storage, Bearer header on API calls.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { apiRequest, ApiError } from "@/src/services/apiClient";
 import { storage } from "@/src/utils/storage";
 
 const TOKEN_KEY = "auth_token";
 const USER_KEY = "auth_user";
-const BASE = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/auth`;
 
 export interface AuthUser {
   user_id: string;
   email: string;
-}
-
-// async function call<T>(path: string, body?: object, token?: string | null): Promise<T> {
-//   const headers: Record<string, string> = { "Content-Type": "application/json" };
-//   if (token) headers.Authorization = `Bearer ${token}`;
-//   let res: Response;
-//   try {
-//     res = await fetch(`${BASE}${path}`, {
-//       method: body ? "POST" : "GET",
-//       headers,
-//       body: body ? JSON.stringify(body) : undefined,
-//     });
-//   } catch {
-//     throw new Error("No internet connection — try again");
-//   }
-//   const data = await res.json().catch(() => ({}));
-
-//   if (!res.ok) {
-//     const detail = (data as { detail?: unknown }).detail;
-//     throw new Error(typeof detail === "string" ? detail : "Something went wrong — try again");
-//   }
-//   return data as T;
-// }
-
-async function call<T>(
-  path: string,
-  body?: object,
-  token?: string | null
-): Promise<T> {
-  if (!process.env.EXPO_PUBLIC_BACKEND_URL) {
-    throw new Error("Backend URL is missing. Check your .env file.");
-  }
-
-  const BASE = `${process.env.EXPO_PUBLIC_BACKEND_URL.replace(/\/$/, "")}/api/auth`;
-  const url = `${BASE}${path}`;
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  let res: Response;
-
-  try {
-    res = await fetch(url, {
-      method: body !== undefined ? "POST" : "GET",
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-  } catch (error) {
-    console.error("API Network Error:", error);
-    throw new Error(
-      "Unable to connect to backend. Check your API URL and server."
-    );
-  }
-
-  const raw = await res.text();
-  let data: any = {};
-
-  try {
-    data = raw ? JSON.parse(raw) : {};
-  } catch {
-    data = { message: raw };
-  }
-
-  if (!res.ok) {
-    const message =
-      data?.detail ||
-      data?.message ||
-      data?.error ||
-      `Request failed with status ${res.status}`;
-
-    throw new Error(
-      typeof message === "string"
-        ? message
-        : JSON.stringify(message)
-    );
-  }
-  return data as T;
 }
 
 interface AuthContextValue {
@@ -112,25 +30,79 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     void (async () => {
-      const saved = await storage.secureGet(TOKEN_KEY, "");
-      if (saved) {
+      const [savedToken, cachedUserRaw] = await Promise.all([
+        storage.secureGet(TOKEN_KEY, ""),
+        storage.getItem(USER_KEY, ""),
+      ]);
+
+      let initialUser: AuthUser | null = null;
+      if (cachedUserRaw) {
         try {
-          setUser(await call<AuthUser>("/me", undefined, saved));
-          setToken(saved);
-        } catch (error) {
-          // Keep the session when offline; drop it only when the server rejects it.
-          if (error instanceof Error && error.message.startsWith("No internet")) {
-            const cached = await storage.getItem(USER_KEY, "");
-            if (cached) {
-              setToken(saved);
-              setUser(JSON.parse(cached) as AuthUser);
-            }
-          } else await storage.secureRemove(TOKEN_KEY);
+          initialUser = JSON.parse(cachedUserRaw) as AuthUser;
+        } catch {
+          initialUser = null;
         }
       }
-      setLoading(false);
+
+      if (savedToken && initialUser) {
+        // Optimistic hydration: render main interface immediately without blocking on network
+        if (isMounted) {
+          setToken(savedToken);
+          setUser(initialUser);
+          setLoading(false);
+        }
+
+        // Validate token in the background with timeout
+        try {
+          const verified = await apiRequest<AuthUser>("/api/auth/me", {
+            token: savedToken,
+            timeoutMs: 8000,
+          });
+          if (isMounted) {
+            setUser(verified);
+            await storage.setItem(USER_KEY, JSON.stringify(verified));
+          }
+        } catch (error) {
+          // Drop the session ONLY when the server explicitly rejects the token (401)
+          if (error instanceof ApiError && error.isAuthError) {
+            if (isMounted) {
+              setToken(null);
+              setUser(null);
+            }
+            await storage.secureRemove(TOKEN_KEY);
+            await storage.removeItem(USER_KEY);
+          }
+          // Network errors, timeouts, or 5xx preserve offline access
+        }
+      } else if (savedToken) {
+        // Token exists but no cached user metadata: must fetch /me
+        try {
+          const fetched = await apiRequest<AuthUser>("/api/auth/me", {
+            token: savedToken,
+            timeoutMs: 8000,
+          });
+          if (isMounted) {
+            setToken(savedToken);
+            setUser(fetched);
+            await storage.setItem(USER_KEY, JSON.stringify(fetched));
+          }
+        } catch (error) {
+          if (error instanceof ApiError && error.isAuthError) {
+            await storage.secureRemove(TOKEN_KEY);
+          }
+        } finally {
+          if (isMounted) setLoading(false);
+        }
+      } else {
+        if (isMounted) setLoading(false);
+      }
     })();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const startSession = useCallback(async (res: { access_token: string; user: AuthUser }) => {
@@ -144,31 +116,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       loading,
-      login: async (email, password) =>
-        startSession(await call("/login", { email: email.trim().toLowerCase(), password })),
-      register: async (email, password) =>
-        startSession(await call("/register", { email: email.trim().toLowerCase(), password })),
+      login: async (email, password) => {
+        const res = await apiRequest<{ access_token: string; user: AuthUser }>("/api/auth/login", {
+          method: "POST",
+          body: { email: email.trim().toLowerCase(), password },
+        });
+        await startSession(res);
+      },
+      register: async (email, password) => {
+        const res = await apiRequest<{ access_token: string; user: AuthUser }>("/api/auth/register", {
+          method: "POST",
+          body: { email: email.trim().toLowerCase(), password },
+        });
+        await startSession(res);
+      },
       logout: async () => {
         try {
-          if (token) await call("/logout", {}, token);
+          if (token) {
+            await apiRequest<{ ok: boolean }>("/api/auth/logout", {
+              method: "POST",
+              token,
+              timeoutMs: 4000,
+            });
+          }
         } catch {
-          // Local sign-out still happens.
+          // Local sign-out still happens even if offline or server is down
         }
         await storage.secureRemove(TOKEN_KEY);
         await storage.removeItem(USER_KEY);
         setToken(null);
         setUser(null);
       },
-      forgotPassword: async (email) =>
-        (await call<{ message: string }>("/forgot-password", { email: email.trim().toLowerCase() })).message,
-      resetPassword: async (email, code, newPassword) =>
-        (
-          await call<{ message: string }>("/reset-password", {
+      forgotPassword: async (email) => {
+        const res = await apiRequest<{ message: string }>("/api/auth/forgot-password", {
+          method: "POST",
+          body: { email: email.trim().toLowerCase() },
+        });
+        return res.message;
+      },
+      resetPassword: async (email, code, newPassword) => {
+        const res = await apiRequest<{ message: string }>("/api/auth/reset-password", {
+          method: "POST",
+          body: {
             email: email.trim().toLowerCase(),
             code: code.trim(),
             new_password: newPassword,
-          })
-        ).message,
+          },
+        });
+        return res.message;
+      },
     }),
     [user, loading, token, startSession],
   );

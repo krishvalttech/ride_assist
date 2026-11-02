@@ -58,9 +58,22 @@ async def get_status_checks():
     status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
     return [StatusCheck(**status_check) for status_check in status_checks]
 
-from auth import build_router as build_auth_router, ensure_indexes  # noqa: E402
+from auth import (  # noqa: E402
+    build_router as build_auth_router,
+    ensure_indexes as ensure_auth_indexes,
+    make_current_user_dep,
+)
+from subscriptions import (  # noqa: E402
+    build_subscriptions_router,
+    build_webhooks_router,
+    ensure_canonical_plans,
+    ensure_subscription_indexes,
+)
 
+current_user_dep = make_current_user_dep(db)
 api_router.include_router(build_auth_router(db))
+api_router.include_router(build_subscriptions_router(db, current_user_dep))
+api_router.include_router(build_webhooks_router(db))
 
 # Include the router in the main app
 app.include_router(api_router)
@@ -68,7 +81,9 @@ app.include_router(api_router)
 
 @app.on_event("startup")
 async def create_indexes():
-    await ensure_indexes(db)
+    await ensure_auth_indexes(db)
+    await ensure_subscription_indexes(db)
+    await ensure_canonical_plans(db)
 
 app.add_middleware(
     CORSMiddleware,

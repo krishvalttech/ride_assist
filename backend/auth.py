@@ -195,9 +195,7 @@ def _public(user: dict) -> dict:
     return {"user_id": user["user_id"], "email": user["email"]}
 
 
-def build_router(db) -> APIRouter:
-    router = APIRouter(prefix="/auth")
-
+def make_current_user_dep(db):
     async def current_user(creds: HTTPAuthorizationCredentials | None = Depends(bearer)) -> dict:
         if not creds or creds.scheme.lower() != "bearer":
             raise HTTPException(401, "Not authenticated")
@@ -216,6 +214,12 @@ def build_router(db) -> APIRouter:
             raise HTTPException(401, "Session ended")
         user["_jti"], user["_exp"] = payload.get("jti"), payload.get("exp")
         return user
+    return current_user
+
+
+def build_router(db) -> APIRouter:
+    router = APIRouter(prefix="/auth")
+    current_user = make_current_user_dep(db)
 
     @router.post("/register", status_code=201)
     async def register(c: Credentials):

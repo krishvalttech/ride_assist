@@ -1,6 +1,6 @@
 // Lightweight toast — mounted high in the tree (above tab chrome), never an
 // Alert. Auto-dismisses after 2.8s.
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useEffect, useRef, useState, type ReactNode } from "react";
 import { Animated, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -44,8 +44,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<ToastState | null>(null);
-  const opacity = useRef(new Animated.Value(0)).current;
+  const [opacity] = useState(() => new Animated.Value(0));
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
 
   const show = useCallback(
     (message: string, tone: ToastTone = "info") => {

@@ -12,7 +12,7 @@
 // import { useToast } from "@/src/components/Toast";
 // import { bottomChromeInset } from "@/src/navigation";
 // import { rideStore } from "@/src/services/rideStore";
-// import { useFilteredLogs, useRideAssistState, type LogFilter } from "@/src/hooks/useRideEngine";
+// import { useFilteredLogs, useRideAssistSelector, type LogFilter } from "@/src/hooks/useRideEngine";
 // import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 // import type { DiagnosticLevel } from "@/src/models/types";
 
@@ -258,7 +258,7 @@
 // Event history & diagnostics: redacted structured log, latency stats,
 // duplicate suppression, export and local-data deletion.
 import { useMemo, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { exportText } from "@/src/utils/exportText";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import dayjs from "dayjs";
@@ -269,7 +269,7 @@ import { ConfirmSheet } from "@/src/components/ConfirmSheet";
 import { useToast } from "@/src/components/Toast";
 import { bottomChromeInset } from "@/src/navigation";
 import { rideStore } from "@/src/services/rideStore";
-import { useFilteredLogs, useRideAssistState, type LogFilter } from "@/src/hooks/useRideEngine";
+import { useFilteredLogs, useRideAssistSelector, type LogFilter } from "@/src/hooks/useRideEngine";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { DiagnosticLevel } from "@/src/models/types";
 
@@ -297,13 +297,13 @@ export default function HistoryScreen() {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const toast = useToast();
-  const state = useRideAssistState();
+  const rides = useRideAssistSelector((s) => s.rides);
   const [filter, setFilter] = useState<LogFilter>("all");
   const [confirmClear, setConfirmClear] = useState(false);
 
   const logs = useFilteredLogs(filter);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- recompute whenever rides change
-  const stats = useMemo(() => rideStore.computeDailyStats(), [state.rides]);
+  const stats = useMemo(() => rideStore.computeDailyStats(), [rides]);
 
   const levelColor = (level: DiagnosticLevel) =>
     level === "error"
@@ -410,6 +410,10 @@ export default function HistoryScreen() {
           style={styles.logList}
           data={logs}
           keyExtractor={(entry) => entry.id}
+          initialNumToRender={10}
+          maxToRenderPerBatch={12}
+          windowSize={5}
+          removeClippedSubviews={Platform.OS === "android"}
           showsVerticalScrollIndicator
           nestedScrollEnabled
           ItemSeparatorComponent={() => <View style={styles.separator} />}

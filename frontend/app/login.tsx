@@ -1,5 +1,5 @@
 // Sign in / create account / forgot password (emailed 6-digit code) / reset.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AccessibilityInfo,
   Animated,
@@ -47,14 +47,13 @@ const PULSE_MS = 3000;
 
 /** Pulsing radar rings + breathing core + orbiting spark. */
 function AssistOrb({ reduceMotion }: { reduceMotion: boolean }) {
-  const { colors } = useTheme();
   const styles = useStyles();
 
-  const rings = useRef(
+  const [rings] = useState(() =>
     Array.from({ length: RING_COUNT }, (_, i) => new Animated.Value(i / RING_COUNT)),
-  ).current;
-  const breathe = useRef(new Animated.Value(0)).current;
-  const orbit = useRef(new Animated.Value(0)).current;
+  );
+  const [breathe] = useState(() => new Animated.Value(0));
+  const [orbit] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     if (reduceMotion) return;
@@ -138,7 +137,7 @@ function AssistOrb({ reduceMotion }: { reduceMotion: boolean }) {
 function StatusTicker({ reduceMotion }: { reduceMotion: boolean }) {
   const styles = useStyles();
   const [index, setIndex] = useState(0);
-  const fade = useRef(new Animated.Value(1)).current;
+  const [fade] = useState(() => new Animated.Value(1));
 
   useEffect(() => {
     if (reduceMotion) return;
@@ -163,7 +162,7 @@ function StatusTicker({ reduceMotion }: { reduceMotion: boolean }) {
 
 function LiveDot({ reduceMotion }: { reduceMotion: boolean }) {
   const styles = useStyles();
-  const pulse = useRef(new Animated.Value(1)).current;
+  const [pulse] = useState(() => new Animated.Value(1));
 
   useEffect(() => {
     if (reduceMotion) return;
@@ -198,7 +197,7 @@ export default function LoginScreen() {
   const [reduceMotion, setReduceMotion] = useState(false);
 
   // Form fades in whenever the mode changes, so the swap reads as a response to the tap.
-  const formFade = useRef(new Animated.Value(1)).current;
+  const [formFade] = useState(() => new Animated.Value(1));
 
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});

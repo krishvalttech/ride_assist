@@ -6,10 +6,10 @@ import { useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import dayjs from "dayjs";
 
-import { EmptyState, KeyValueRow, MetricCard, SectionCard, ToggleRow } from "@/src/components/ui";
+import { EmptyState, KeyValueRow, MetricCard, SectionCard } from "@/src/components/ui";
 import { computeEarnings } from "@/src/rules/earnings";
 import { formatINR, PLATFORM_ORDER, platformDisplayName } from "@/src/services/platformRegistry";
-import { useRideAssistState } from "@/src/hooks/useRideEngine";
+import { useRideAssistSelector } from "@/src/hooks/useRideEngine";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const perKm = (value: number | null) => (value === null ? "—" : `${formatINR(value)}/km`);
@@ -19,12 +19,12 @@ export default function EarningsScreen() {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const state = useRideAssistState();
-  const [includeSimulated, setIncludeSimulated] = useState(true);
+  const rides = useRideAssistSelector((s) => s.rides);
+  const [includeSimulated] = useState(true);
 
   const summary = useMemo(
-    () => computeEarnings(state.rides, Date.now(), { includeSimulated }),
-    [state.rides, includeSimulated],
+    () => computeEarnings(rides, undefined, { includeSimulated }),
+    [rides, includeSimulated],
   );
   const maxDay = Math.max(1, ...summary.days.map((d) => d.total));
 

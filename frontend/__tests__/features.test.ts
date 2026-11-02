@@ -1,14 +1,13 @@
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-
-const mockSpeak = jest.fn();
-const mockStop = jest.fn();
-jest.mock("expo-speech", () => ({ speak: (...args: unknown[]) => mockSpeak(...args), stop: () => mockStop() }));
-
 import { buildAnnouncement, registerVoiceAlerts } from "@/src/services/voiceAlerts";
 import { buildCaptureSample, rideStore } from "@/src/services/rideStore";
 import { parseRideNotification } from "@/src/parsers";
 import { DEFAULT_SETTINGS } from "@/src/rules/defaults";
 import { __resetStorage } from "./mocks/storage";
+
+const mockSpeak = jest.fn();
+const mockStop = jest.fn();
+jest.mock("expo-speech", () => ({ speak: (...args: unknown[]) => mockSpeak(...args), stop: () => mockStop() }));
 
 beforeEach(() => {
   __resetStorage();

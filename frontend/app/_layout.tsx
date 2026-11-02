@@ -5,6 +5,7 @@ import { LogBox, StyleSheet } from "react-native";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { useFonts } from "expo-font";
+import * as SplashScreen from "expo-splash-screen";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
@@ -12,15 +13,21 @@ import { ErrorBoundary } from "@/src/components/error-boundary";
 import { queryClient } from "@/src/query-client";
 import { ToastProvider } from "@/src/components/Toast";
 import { AuthProvider } from "@/src/services/auth";
-import { useNativeListenerWiring, useRideAssistState } from "@/src/hooks/useRideEngine";
+import { SubscriptionProvider } from "@/src/services/subscriptionContext";
+import { useNativeListenerWiring, useRideAssistReady, useSimulatorOn } from "@/src/hooks/useRideEngine";
 import { rideStore } from "@/src/services/rideStore";
 import { registerAutoAcceptHook } from "@/src/services/acceptance";
 import { registerVoiceAlerts } from "@/src/services/voiceAlerts";
 import { startSimulator, stopSimulator } from "@/src/services/simulator";
 import { useTheme } from "@/src/theme";
 
-// Disable logbox noise so users see the app, not redbox spam.
-LogBox.ignoreAllLogs(true);
+// Keep splash visible until initial font and storage loading completes
+void SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// In production, keep logs quiet. In development, show dev warnings.
+if (!__DEV__) {
+  LogBox.ignoreAllLogs(true);
+}
 
 // Wire the auto-accept hook once (honest no-op until a verified adapter exists).
 registerAutoAcceptHook();
@@ -36,21 +43,37 @@ export default function RootLayout() {
     "Barlow-SemiBold": require("../assets/fonts/Barlow-SemiBold.ttf"),
   });
 
-  const state = useRideAssistState();
-  const ready = state.ready && fontsLoaded;
+  const storeReady = useRideAssistReady();
+  const simulatorOn = useSimulatorOn();
+  const ready = storeReady && fontsLoaded;
 
   useEffect(() => {
     void rideStore.init();
   }, []);
 
+  // Hide splash as soon as first meaningful render is ready
+  useEffect(() => {
+    if (ready) {
+      void SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [ready]);
+
+  // Failsafe: hide splash after 3s even if fonts or store take unusually long
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void SplashScreen.hideAsync().catch(() => {});
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Simulator lifecycle follows the toggle.
   useEffect(() => {
-    if (state.simulatorOn) {
+    if (simulatorOn) {
       startSimulator();
     } else {
       stopSimulator();
     }
-  }, [state.simulatorOn]);
+  }, [simulatorOn]);
 
   // Wire the native listener (no-op in Expo Go / web).
   useNativeListenerWiring();
@@ -64,12 +87,14 @@ export default function RootLayout() {
           <KeyboardProvider>
             <ToastProvider>
               <AuthProvider>
-                <Stack
-                  screenOptions={{
-                    headerShown: false,
-                    contentStyle: { backgroundColor: colors.surface },
-                  }}
-                />
+                <SubscriptionProvider>
+                  <Stack
+                    screenOptions={{
+                      headerShown: false,
+                      contentStyle: { backgroundColor: colors.surface },
+                    }}
+                  />
+                </SubscriptionProvider>
               </AuthProvider>
             </ToastProvider>
           </KeyboardProvider>

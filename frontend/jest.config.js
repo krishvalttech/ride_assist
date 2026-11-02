@@ -8,6 +8,7 @@ module.exports = {
     "^.+\\.[jt]sx?$": ["babel-jest", { presets: ["babel-preset-expo"] }],
   },
   moduleNameMapper: {
+    "^expo/virtual/env$": "<rootDir>/__tests__/mocks/env.js",
     "^@/src/utils/storage$": "<rootDir>/__tests__/mocks/storage.ts",
     "^@/(.*)$": "<rootDir>/$1",
   },

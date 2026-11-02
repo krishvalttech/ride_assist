@@ -1,7 +1,7 @@
 // Live Requests: incoming ride requests with confidence, rule results and
 // manual actions. Filter chips are chrome (fixed 56pt row, never wrapping).
-import { useMemo, useState } from "react";
-import { FlatList, Text, View } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { FlatList, Platform, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Chip, ChipRow, EmptyState } from "@/src/components/ui";
@@ -11,7 +11,7 @@ import { useToast } from "@/src/components/Toast";
 import { bottomChromeInset } from "@/src/navigation";
 import { acceptanceManager } from "@/src/services/acceptance";
 import { rideStore } from "@/src/services/rideStore";
-import { useFilteredRides, useRideAssistState, type RideFilter } from "@/src/hooks/useRideEngine";
+import { useFilteredRides, useSimulatorOn, type RideFilter } from "@/src/hooks/useRideEngine";
 import { fonts, makeStyles, spacing } from "@/src/theme";
 import type { RideRequest } from "@/src/models/types";
 
@@ -27,55 +27,78 @@ export default function RequestsScreen() {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const toast = useToast();
-  const state = useRideAssistState();
+  const simulatorOn = useSimulatorOn();
   const [filter, setFilter] = useState<RideFilter>("all");
   const [verifying, setVerifying] = useState<RideRequest | null>(null);
 
   const rides = useFilteredRides(filter);
   const data = useMemo(() => [...rides].reverse(), [rides]);
 
-  const handleAccept = async (ride: RideRequest) => {
-    if (ride.simulated) {
-      toast.show("Requesting acceptance (simulated)…", "info");
-      const result = await acceptanceManager.initiateAcceptance(ride.id);
-      toast.show(result.message, result.ok ? "success" : "warning");
-      return;
-    }
-    const provider = acceptanceManager.providerFor(ride);
-    if (provider.name !== "user-manual" && (await provider.isSupported(ride.platform))) {
-      toast.show("Requesting acceptance via Accessibility…", "info");
-      const result = await acceptanceManager.initiateAcceptance(ride.id);
-      if (!result.manualFallback) {
+  const handleAccept = useCallback(
+    async (ride: RideRequest) => {
+      if (ride.simulated) {
+        toast.show("Requesting acceptance (simulated)…", "info");
+        const result = await acceptanceManager.initiateAcceptance(ride.id);
         toast.show(result.message, result.ok ? "success" : "warning");
         return;
       }
-      toast.show(result.message, "warning");
-    }
-    // Manual mode or fallback when automated acceptance is unavailable:
-    // guide the user through the driver app and collect explicit confirmation.
-    setVerifying(ride);
-  };
+      const provider = acceptanceManager.providerFor(ride);
+      if (provider.name !== "user-manual" && (await provider.isSupported(ride.platform))) {
+        toast.show("Requesting acceptance via Accessibility…", "info");
+        const result = await acceptanceManager.initiateAcceptance(ride.id);
+        if (!result.manualFallback) {
+          toast.show(result.message, result.ok ? "success" : "warning");
+          return;
+        }
+        toast.show(result.message, "warning");
+      }
+      // Manual mode or fallback when automated acceptance is unavailable:
+      // guide the user through the driver app and collect explicit confirmation.
+      setVerifying(ride);
+    },
+    [toast],
+  );
 
-  const handleDismiss = (ride: RideRequest) => {
-    const done = rideStore.dismissRide(ride.id);
-    toast.show(done ? "Request dismissed" : "Request can no longer be dismissed", done ? "info" : "warning");
-  };
+  const handleDismiss = useCallback(
+    (ride: RideRequest) => {
+      const done = rideStore.dismissRide(ride.id);
+      toast.show(done ? "Request dismissed" : "Request can no longer be dismissed", done ? "info" : "warning");
+    },
+    [toast],
+  );
 
-  const handleManualConfirm = (accepted: boolean) => {
-    if (!verifying) return;
-    const result =
-      verifying.status === "UNKNOWN"
-        ? acceptanceManager.verifyUnknownOutcome(verifying.id, accepted)
-        : acceptanceManager.confirmManualEvidence(verifying.id, accepted);
-    toast.show(result.message, accepted ? "success" : "warning");
-    setVerifying(null);
-  };
+  const handleManualConfirm = useCallback(
+    (accepted: boolean) => {
+      if (!verifying) return;
+      const result =
+        verifying.status === "UNKNOWN"
+          ? acceptanceManager.verifyUnknownOutcome(verifying.id, accepted)
+          : acceptanceManager.confirmManualEvidence(verifying.id, accepted);
+      toast.show(result.message, accepted ? "success" : "warning");
+      setVerifying(null);
+    },
+    [verifying, toast],
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: RideRequest }) => (
+      <RideRequestCard
+        ride={item}
+        onAccept={handleAccept}
+        onDismiss={handleDismiss}
+        onVerify={setVerifying}
+      />
+    ),
+    [handleAccept, handleDismiss],
+  );
+
+  const keyExtractor = useCallback((ride: RideRequest) => ride.id, []);
 
   return (
     <View style={styles.screen} testID="requests-screen">
       <View style={[styles.headerBlock, { paddingTop: insets.top + spacing.md }]}>
         <Text style={styles.title}>Live Requests</Text>
-        {state.simulatorOn ? <Text style={styles.simNote}>Simulation Mode is feeding sample requests</Text> : null}
+        {simulatorOn ? <Text style={styles.simNote}>Simulation Mode is feeding sample requests</Text> : null}
       </View>
 
       <ChipRow testID="requests-filter-row">
@@ -92,7 +115,11 @@ export default function RequestsScreen() {
 
       <FlatList
         data={data}
-        keyExtractor={(ride) => ride.id}
+        keyExtractor={keyExtractor}
+        initialNumToRender={8}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS === "android"}
         contentContainerStyle={{
           paddingHorizontal: spacing.lg,
           paddingBottom: bottomChromeInset(insets.bottom) + spacing.xl,
@@ -104,23 +131,16 @@ export default function RequestsScreen() {
             icon="radar"
             title="No ride requests here yet"
             message={
-              state.simulatorOn
+              simulatorOn
                 ? "Waiting for the next simulated notification…"
                 : "Enable Simulation Mode on the Dashboard to feed sample ride requests through the pipeline, or run a standalone Android build with the native listener."
             }
-            actionLabel={state.simulatorOn ? undefined : "Enable Simulation Mode"}
+            actionLabel={simulatorOn ? undefined : "Enable Simulation Mode"}
             onAction={() => rideStore.setSimulator(true)}
             actionTestID="requests-enable-simulation"
           />
         }
-        renderItem={({ item }) => (
-          <RideRequestCard
-            ride={item}
-            onAccept={(ride) => void handleAccept(ride)}
-            onDismiss={handleDismiss}
-            onVerify={setVerifying}
-          />
-        )}
+        renderItem={renderItem}
       />
 
       <ConfirmSheet

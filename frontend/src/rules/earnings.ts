@@ -72,8 +72,8 @@ function bucketOf(rides: RideRequest[]): EarningsBucket {
 
 export function computeEarnings(
   rides: RideRequest[],
-  now: number,
-  options: { includeSimulated: boolean },
+  now: number | undefined = Date.now(),
+  options: { includeSimulated?: boolean } = { includeSimulated: true },
 ): EarningsSummary {
   const confirmed = rides.filter(
     (r) => isConfirmedEarning(r) && (options.includeSimulated || !r.simulated),

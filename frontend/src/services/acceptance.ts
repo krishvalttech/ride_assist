@@ -9,6 +9,7 @@
 import { nativeBridge } from "@/src/services/nativeBridge";
 import { previewOf } from "@/src/services/redact";
 import { rideStore } from "@/src/services/rideStore";
+import { subscriptionService } from "@/src/services/subscription";
 import type { RideRequest } from "@/src/models/types";
 
 export interface AcceptanceRequestResult {
@@ -153,6 +154,25 @@ class AcceptanceManager {
       return { ok: false, message: "Acceptance was already attempted for this request" };
     }
 
+    // Entitlement Guard: Auto-accept requires an active subscription pass
+    if (!ride.simulated) {
+      const sub = await subscriptionService.getCachedSubscription();
+      if (!sub || !sub.has_access) {
+        rideStore.log(
+          "warn",
+          "acceptance",
+          `Auto-accept blocked: Active subscription pass required. Request awaits manual driver approval.`,
+          undefined,
+          ride.id,
+        );
+        return {
+          ok: false,
+          message: "Active subscription pass required for auto-acceptance assistance. Request awaits manual driver approval.",
+          manualFallback: true,
+        };
+      }
+    }
+
     const provider = this.providerFor(ride);
     this.inFlight.add(rideId);
     try {
@@ -199,17 +219,23 @@ class AcceptanceManager {
     if (!ride) return { ok: false, message: "Request not found" };
     const requestedAt = ride.acceptance?.attempts[ride.acceptance.attempts.length - 1]?.at ?? Date.now();
     const withEvidenceLatency = () => ({ ...ride.latency, evidenceMs: Math.max(0, Date.now() - requestedAt) });
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     try {
       // Bounded wait: a provider that never answers yields UNKNOWN, never success.
+      const timeoutPromise = new Promise<AcceptanceEvidenceResult>((resolve) => {
+        timeoutId = setTimeout(
+          () => resolve({ status: "UNKNOWN", source: provider.name, reason: "Timed out waiting for acceptance evidence" }),
+          EVIDENCE_TIMEOUT_MS,
+        );
+        if (typeof (timeoutId as unknown as { unref?: () => void })?.unref === "function") {
+          (timeoutId as unknown as { unref: () => void }).unref();
+        }
+      });
       const evidence = await Promise.race([
         provider.getAcceptanceEvidence(rideId),
-        new Promise<AcceptanceEvidenceResult>((resolve) =>
-          setTimeout(
-            () => resolve({ status: "UNKNOWN", source: provider.name, reason: "Timed out waiting for acceptance evidence" }),
-            EVIDENCE_TIMEOUT_MS,
-          ),
-        ),
+        timeoutPromise,
       ]);
+      if (timeoutId) clearTimeout(timeoutId);
       if (evidence.status === "CONFIRMED") {
         const accepted = rideStore.transition(rideId, "ACCEPTED", {
           patch: {

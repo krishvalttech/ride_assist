@@ -252,7 +252,9 @@ export const nativeBridge = new NativeBridge();
 /** Hook: subscribe to native events + drain buffered ones while mounted. */
 export function useNativeRideEvents(onEvent: NativeEventHandler): void {
   const handlerRef = useRef(onEvent);
-  handlerRef.current = onEvent;
+  useEffect(() => {
+    handlerRef.current = onEvent;
+  });
   useEffect(() => {
     const forward = (event: NativeNotificationEvent) => handlerRef.current(event);
     const off = nativeBridge.addEventListener(forward);

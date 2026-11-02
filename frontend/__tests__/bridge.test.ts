@@ -1,4 +1,6 @@
 import { describe, expect, it, jest } from "@jest/globals";
+import { nativeBridge } from "@/src/services/nativeBridge";
+import type { NativeNotificationEvent } from "@/src/models/types";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- loosely-typed test doubles
 type AnyFn = (...args: any[]) => any;
@@ -17,9 +19,6 @@ jest.mock("react-native", () => ({
 jest.mock("expo-modules-core", () => ({
   requireOptionalNativeModule: () => mockModule,
 }));
-
-import { nativeBridge } from "@/src/services/nativeBridge";
-import type { NativeNotificationEvent } from "@/src/models/types";
 
 const validEvent: NativeNotificationEvent = {
   id: "evt_1",

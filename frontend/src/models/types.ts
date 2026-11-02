@@ -234,4 +234,5 @@ export interface ParsedRide {
   /** True when the parser believes this notification is actually a ride request. */
   isRideRequest: boolean;
   rawPreview: string;
+  parserVersion?: string;
 }

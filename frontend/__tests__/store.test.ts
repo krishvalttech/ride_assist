@@ -5,7 +5,7 @@ import { acceptanceManager } from "@/src/services/acceptance";
 import { SIMULATOR_SCENARIOS, type SimulatorScenario } from "@/src/services/simulator";
 import { DEFAULT_SETTINGS } from "@/src/rules/defaults";
 import { storage, __resetStorage } from "./mocks/storage";
-import type { NativeNotificationEvent, RideRequest, RideStatus } from "@/src/models/types";
+import type { NativeNotificationEvent, RideRequest } from "@/src/models/types";
 
 jest.mock("@/src/services/nativeBridge", () => ({
   nativeBridge: {
@@ -69,11 +69,6 @@ async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void
 
 function rideById(id: string): RideRequest | undefined {
   return rideStore.getSnapshot().rides.find((r) => r.id === id);
-}
-
-function rideByPlatform(platform: string): RideRequest | undefined {
-  const rides = rideStore.getSnapshot().rides.filter((r) => r.platform === platform);
-  return rides[rides.length - 1];
 }
 
 beforeEach(() => {

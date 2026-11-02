@@ -30,6 +30,7 @@ class RideAssistModule : Module() {
         const val KEY_MONITORING = "monitoring_enabled"
         const val KEY_PLATFORM_PACKAGES = "platform_packages"
         const val KEY_RECENT_EVENTS = "recent_events"
+        const val KEY_PENDING_QUEUE = "pending_event_queue"
     }
 
     private val context: Context?

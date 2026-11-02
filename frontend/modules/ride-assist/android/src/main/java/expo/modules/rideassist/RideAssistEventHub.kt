@@ -46,23 +46,74 @@ object RideAssistEventHub {
             } else {
                 if (pending.size >= MAX_BUFFER) pending.removeFirst()
                 pending.addLast(event)
+                persistPendingQueue(pending)
             }
         }
         persistMetadata(event)
     }
 
-    /** Returns and clears buffered events (those emitted before JS mounted). */
+    /** Returns and clears buffered events (both in-memory and persisted). */
     fun drainPending(): JSONArray {
         synchronized(lock) {
             val out = JSONArray()
-            for (event in pending) out.put(event)
-            pending.clear()
+            if (pending.isEmpty()) {
+                val persisted = loadPersistedPendingQueue()
+                for (event in persisted) {
+                    out.put(event)
+                }
+            } else {
+                for (event in pending) {
+                    out.put(event)
+                }
+                pending.clear()
+            }
+            clearPersistedPendingQueue()
             return out
         }
     }
 
     fun clearPending() {
-        synchronized(lock) { pending.clear() }
+        synchronized(lock) {
+            pending.clear()
+            clearPersistedPendingQueue()
+        }
+    }
+
+    private fun persistPendingQueue(events: ArrayDeque<JSONObject>) {
+        try {
+            val context = RideAssistContextHolder.applicationContext ?: return
+            val prefs = context.getSharedPreferences(RideAssistModule.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+            val arr = JSONArray()
+            for (evt in events) {
+                arr.put(evt)
+            }
+            prefs.edit().putString(RideAssistModule.KEY_PENDING_QUEUE, arr.toString()).apply()
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun loadPersistedPendingQueue(): List<JSONObject> {
+        val list = ArrayList<JSONObject>()
+        try {
+            val context = RideAssistContextHolder.applicationContext ?: return list
+            val prefs = context.getSharedPreferences(RideAssistModule.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+            val raw = prefs.getString(RideAssistModule.KEY_PENDING_QUEUE, null) ?: return list
+            val arr = JSONArray(raw)
+            for (i in 0 until arr.length()) {
+                arr.optJSONObject(i)?.let { list.add(it) }
+            }
+        } catch (_: Exception) {
+        }
+        return list
+    }
+
+    private fun clearPersistedPendingQueue() {
+        try {
+            val context = RideAssistContextHolder.applicationContext ?: return
+            context.getSharedPreferences(RideAssistModule.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                .edit().remove(RideAssistModule.KEY_PENDING_QUEUE).apply()
+        } catch (_: Exception) {
+        }
     }
 
     fun bufferedCount(): Int = synchronized(lock) { pending.size }

@@ -46,6 +46,7 @@ class RideAssistNotificationListenerService : NotificationListenerService() {
     }
 
     private fun handle(sbn: StatusBarNotification, removed: Boolean) {
+        RideAssistContextHolder.applicationContext = applicationContext
         val prefs = getSharedPreferences(RideAssistModule.PREFS_NAME, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(RideAssistModule.KEY_MONITORING, false)) return
 

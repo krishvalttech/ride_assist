@@ -11,6 +11,7 @@ import { buildFingerprint, isSameRequest } from "@/src/state/fingerprint";
 import { assertTransition, isTerminal } from "@/src/state/machine";
 import { previewOf, redactMeta } from "@/src/services/redact";
 import { storage } from "@/src/utils/storage";
+import { subscriptionService } from "@/src/services/subscription";
 import type {
   CaptureSample,
   DiagnosticCategory,
@@ -111,24 +112,40 @@ function makeId(prefix: string): string {
 }
 
 /** The shared storage util handles primitives only — structured state is stored as JSON strings. */
-function parseJsonArray<T>(raw: string | null): T[] {
+function parseJsonArray<T>(raw: unknown): T[] {
   if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as T[]) : [];
-  } catch {
-    return [];
+  if (Array.isArray(raw)) return raw as T[];
+  if (typeof raw === "string") {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as T[];
+      if (typeof parsed === "string") {
+        const second: unknown = JSON.parse(parsed);
+        return Array.isArray(second) ? (second as T[]) : [];
+      }
+    } catch {
+      return [];
+    }
   }
+  return [];
 }
 
-function parseJsonObject<T>(raw: string | null): T | undefined {
+function parseJsonObject<T>(raw: unknown): T | undefined {
   if (!raw) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as T) : undefined;
-  } catch {
-    return undefined;
+  if (typeof raw === "object" && !Array.isArray(raw)) return raw as T;
+  if (typeof raw === "string") {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as T;
+      if (typeof parsed === "string") {
+        const second: unknown = JSON.parse(parsed);
+        return second && typeof second === "object" && !Array.isArray(second) ? (second as T) : undefined;
+      }
+    } catch {
+      return undefined;
+    }
   }
+  return undefined;
 }
 
 export function startOfToday(now: number = Date.now()): number {
@@ -159,6 +176,9 @@ class RideStore {
   private autoAcceptHandler: AutoAcceptHandler | null = null;
   private eligibleListeners = new Set<AutoAcceptHandler>();
   private seq = 0;
+  private isBatching = false;
+  private dirtyKeys = new Set<keyof typeof KEYS>();
+  private initPromise: Promise<void> | null = null;
 
   // -- React (useSyncExternalStore) ---------------------------------------
 
@@ -171,15 +191,41 @@ class RideStore {
 
   getSnapshot = (): RideAssistState => this.state;
 
-  private setState(patch: Partial<RideAssistState>) {
+  /** Batch state changes so listeners are notified once, reducing UI re-renders. */
+  batch<T>(fn: () => T): T {
+    const wasBatching = this.isBatching;
+    this.isBatching = true;
+    try {
+      return fn();
+    } finally {
+      this.isBatching = wasBatching;
+      if (!this.isBatching) {
+        this.notify();
+        this.schedulePersist();
+      }
+    }
+  }
+
+  private setState(patch: Partial<RideAssistState>, dirtyKey?: keyof typeof KEYS) {
+    if (dirtyKey) this.dirtyKeys.add(dirtyKey);
     this.state = { ...this.state, ...patch };
-    for (const listener of this.listeners) listener();
+    this.notify();
     this.schedulePersist();
   }
 
   // -- Init / persistence ---------------------------------------------------
 
-  async init(): Promise<void> {
+  init(): Promise<void> {
+    if (this.state.ready) return Promise.resolve();
+    if (!this.initPromise) {
+      this.initPromise = this.doInit().finally(() => {
+        this.initPromise = null;
+      });
+    }
+    return this.initPromise;
+  }
+
+  private async doInit(): Promise<void> {
     if (this.state.ready) return;
     const [ridesRaw, logsRaw, settingsRaw, platformsRaw, monitoring, simulator] = await Promise.all([
       storage.getItem<string>(KEYS.rides, "[]"),
@@ -218,10 +264,28 @@ class RideStore {
       return ride;
     });
 
+    const existingRideIds = new Set(this.state.rides.map((r) => r.id));
+    const mergedRides = [
+      ...recoveredRides.filter((r) => !existingRideIds.has(r.id)),
+      ...this.state.rides,
+    ].slice(-RIDES_CAP);
+
+    const existingLogIds = new Set(this.state.logs.map((l) => l.id));
+    const mergedLogs = [
+      ...(logs ?? []).filter((l) => !existingLogIds.has(l.id)),
+      ...this.state.logs,
+    ].slice(-LOGS_CAP);
+
+    const existingSampleIds = new Set(this.state.samples.map((s) => s.id));
+    const mergedSamples = [
+      ...samples.filter((s) => !existingSampleIds.has(s.id)),
+      ...this.state.samples,
+    ].slice(-SAMPLES_CAP);
+
     this.state = {
       ...this.state,
-      rides: recoveredRides.slice(-RIDES_CAP),
-      logs: (logs ?? []).slice(-LOGS_CAP),
+      rides: mergedRides,
+      logs: mergedLogs,
       settings: { ...DEFAULT_SETTINGS, ...(settings ?? {}) },
       platformConfigs: defaultPlatformConfigs().map((def) => {
         const saved = platforms.find((p) => p.platform === def.platform);
@@ -229,18 +293,20 @@ class RideStore {
         const packageName = saved?.packageName === "com.olacabs.driver" ? def.packageName : saved?.packageName;
         return { ...def, ...(saved ?? {}), ...(packageName ? { packageName } : {}) };
       }),
-      monitoring: monitoring ?? false,
+      monitoring: (monitoring && (await subscriptionService.getCachedSubscription())?.has_access) ? true : false,
       simulatorOn: simulator ?? false,
-      samples: samples.slice(-SAMPLES_CAP),
+      samples: mergedSamples,
       captureOn: captureOn ?? false,
       voiceAlertsOn: voiceAlertsOn ?? false,
       ready: true,
     };
 
+    this.dirtyKeys.clear();
+
     this.log(
       "info",
       "system",
-      `Session started — ${recoveredRides.length} request(s) in history`,
+      `Session started — ${mergedRides.length} request(s) in history`,
       expiredOnRecovery > 0 ? { recoveredAsExpired: expiredOnRecovery } : undefined,
     );
 
@@ -250,7 +316,6 @@ class RideStore {
       (this.sweepTimer as unknown as { unref: () => void }).unref();
     }
     this.notify();
-    this.schedulePersist();
   }
 
   dispose(): void {
@@ -261,7 +326,7 @@ class RideStore {
   }
 
   private schedulePersist() {
-    if (!this.state.ready) return;
+    if (!this.state.ready || this.isBatching || this.dirtyKeys.size === 0) return;
     if (this.persistTimer) clearTimeout(this.persistTimer);
     this.persistTimer = setTimeout(() => {
       void this.persist();
@@ -271,19 +336,26 @@ class RideStore {
     }
   }
 
+  /** Write only modified keys to avoid re-serializing the entire database on small updates. */
   private async persist(): Promise<void> {
+    if (this.dirtyKeys.size === 0) return;
+    const toSave = new Set(this.dirtyKeys);
+    this.dirtyKeys.clear();
+
     const { rides, logs, settings, platformConfigs, monitoring, simulatorOn, samples, captureOn, voiceAlertsOn } = this.state;
-    await Promise.all([
-      storage.setItem(KEYS.rides, JSON.stringify(rides.slice(-RIDES_CAP))),
-      storage.setItem(KEYS.logs, JSON.stringify(logs.slice(-LOGS_CAP))),
-      storage.setItem(KEYS.settings, JSON.stringify(settings)),
-      storage.setItem(KEYS.platforms, JSON.stringify(platformConfigs)),
-      storage.setItem(KEYS.monitoring, monitoring),
-      storage.setItem(KEYS.simulator, simulatorOn),
-      storage.setItem(KEYS.samples, JSON.stringify(samples.slice(-SAMPLES_CAP))),
-      storage.setItem(KEYS.capture, captureOn),
-      storage.setItem(KEYS.voice, voiceAlertsOn),
-    ]);
+    const tasks: Promise<boolean>[] = [];
+
+    if (toSave.has("rides")) tasks.push(storage.setItem(KEYS.rides, JSON.stringify(rides.slice(-RIDES_CAP))));
+    if (toSave.has("logs")) tasks.push(storage.setItem(KEYS.logs, JSON.stringify(logs.slice(-LOGS_CAP))));
+    if (toSave.has("settings")) tasks.push(storage.setItem(KEYS.settings, JSON.stringify(settings)));
+    if (toSave.has("platforms")) tasks.push(storage.setItem(KEYS.platforms, JSON.stringify(platformConfigs)));
+    if (toSave.has("monitoring")) tasks.push(storage.setItem(KEYS.monitoring, monitoring));
+    if (toSave.has("simulator")) tasks.push(storage.setItem(KEYS.simulator, simulatorOn));
+    if (toSave.has("samples")) tasks.push(storage.setItem(KEYS.samples, JSON.stringify(samples.slice(-SAMPLES_CAP))));
+    if (toSave.has("capture")) tasks.push(storage.setItem(KEYS.capture, captureOn));
+    if (toSave.has("voice")) tasks.push(storage.setItem(KEYS.voice, voiceAlertsOn));
+
+    await Promise.all(tasks);
   }
 
   // -- Diagnostics ----------------------------------------------------------
@@ -304,24 +376,32 @@ class RideStore {
       meta: redactMeta(meta),
       rideId,
     };
+    this.dirtyKeys.add("logs");
     this.state = { ...this.state, logs: [...this.state.logs, entry].slice(-LOGS_CAP) };
     this.notify();
     this.schedulePersist();
   }
 
   private notify() {
+    if (this.isBatching) return;
     for (const listener of this.listeners) listener();
   }
 
   // -- Ingest pipeline ------------------------------------------------------
 
-  /** Serialized processing keeps state transitions atomic per event. */
+  /** Serialized processing keeps state transitions atomic per event. Awaits init to prevent dropped events. */
   ingestNotification(event: NativeNotificationEvent): Promise<RideRequest | null> {
-    this.queue = this.queue.then(() => this.processEvent(event));
+    this.queue = this.queue.then(async () => {
+      if (!this.state.ready) {
+        await this.init();
+      }
+      return this.processEvent(event);
+    });
     return this.queue as Promise<RideRequest | null>;
   }
 
-  private async processEvent(event: NativeNotificationEvent): Promise<RideRequest | null> {
+  private processEvent(event: NativeNotificationEvent): RideRequest | null {
+    return this.batch(() => {
     const now = Date.now();
     const detectionMs = Math.max(0, now - event.postedAt);
 
@@ -406,8 +486,8 @@ class RideStore {
       simulated: !!event.simulated,
       latency: { detectionMs },
     };
+    this.dirtyKeys.add("rides");
     this.state = { ...this.state, rides: [...this.state.rides, ride].slice(-RIDES_CAP) };
-    this.notify();
 
     // DETECTED → PARSING
     ride = this.transition(ride.id, "PARSING", {
@@ -470,9 +550,8 @@ class RideStore {
       }
     }
 
-    this.notify();
-    this.schedulePersist();
     return ride;
+    });
   }
 
   // -- Mutations ------------------------------------------------------------
@@ -513,6 +592,7 @@ class RideStore {
   }
 
   private replaceRide(updated: RideRequest) {
+    this.dirtyKeys.add("rides");
     const rides = this.state.rides.map((r) => (r.id === updated.id ? updated : r));
     this.state = { ...this.state, rides };
     this.notify();
@@ -524,24 +604,25 @@ class RideStore {
   }
 
   sweepExpiry(): number {
-    const now = Date.now();
-    let changed = 0;
-    for (const ride of this.state.rides) {
-      if (isTerminal(ride.status)) continue;
-      // An in-flight acceptance or an UNKNOWN outcome must never silently
-      // expire — it needs evidence or explicit manual verification.
-      if (ride.status === "ACCEPT_REQUESTED" || ride.status === "UNKNOWN") continue;
-      if (ride.expiresAt <= now) {
-        const expired = this.transition(ride.id, "EXPIRED", {
-          logMessage: `Request expired after ${this.state.settings.maxRequestAgeSec}s without action`,
-          logCategory: "state",
-          logLevel: "warn",
-        });
-        if (expired) changed += 1;
+    return this.batch(() => {
+      const now = Date.now();
+      let changed = 0;
+      for (const ride of this.state.rides) {
+        if (isTerminal(ride.status)) continue;
+        // An in-flight acceptance or an UNKNOWN outcome must never silently
+        // expire — it needs evidence or explicit manual verification.
+        if (ride.status === "ACCEPT_REQUESTED" || ride.status === "UNKNOWN") continue;
+        if (ride.expiresAt <= now) {
+          const expired = this.transition(ride.id, "EXPIRED", {
+            logMessage: `Request expired after ${this.state.settings.maxRequestAgeSec}s without action`,
+            logCategory: "state",
+            logLevel: "warn",
+          });
+          if (expired) changed += 1;
+        }
       }
-    }
-    if (changed > 0) this.notify();
-    return changed;
+      return changed;
+    });
   }
 
   dismissRide(rideId: string, reason = "Dismissed by user"): RideRequest | null {
@@ -553,7 +634,7 @@ class RideStore {
   }
 
   setSettings(settings: RuleSettings): void {
-    this.setState({ settings });
+    this.setState({ settings }, "settings");
     this.log("info", "system", "Ride filter settings updated");
   }
 
@@ -561,7 +642,7 @@ class RideStore {
     const platformConfigs = this.state.platformConfigs.map((p) =>
       p.platform === platform ? { ...p, ...patch } : p,
     );
-    this.setState({ platformConfigs });
+    this.setState({ platformConfigs }, "platforms");
     this.log("info", "system", `Platform config updated for ${platform}`, {
       ...(patch.detectionEnabled !== undefined ? { detectionEnabled: patch.detectionEnabled } : {}),
       ...(patch.acceptanceAssistEnabled !== undefined ? { acceptanceAssistEnabled: patch.acceptanceAssistEnabled } : {}),
@@ -570,14 +651,14 @@ class RideStore {
   }
 
   setMonitoring(on: boolean): void {
-    this.setState({ monitoring: on });
+    this.setState({ monitoring: on }, "monitoring");
     this.log("info", "permission", on ? "Monitoring started" : "Monitoring paused", {
       nativeListenerAvailable: this.state.nativePermission?.notificationListener ?? "unknown",
     });
   }
 
   setSimulator(on: boolean): void {
-    this.setState({ simulatorOn: on });
+    this.setState({ simulatorOn: on }, "simulator");
     this.log("info", "simulator", on ? "Simulation mode enabled" : "Simulation mode disabled");
   }
 
@@ -592,6 +673,7 @@ class RideStore {
   }
 
   clearAllData(): void {
+    (Object.keys(KEYS) as (keyof typeof KEYS)[]).forEach((k) => this.dirtyKeys.add(k));
     this.state = {
       ...this.state,
       rides: [],
@@ -612,26 +694,26 @@ class RideStore {
   // -- Capture Tool ---------------------------------------------------------
 
   setCapture(on: boolean): void {
-    this.setState({ captureOn: on });
+    this.setState({ captureOn: on }, "capture");
     this.log("info", "parsing", on ? "Notification capture enabled" : "Notification capture disabled");
   }
 
   addSample(sample: CaptureSample): void {
-    this.setState({ samples: [...this.state.samples, sample].slice(-SAMPLES_CAP) });
+    this.setState({ samples: [...this.state.samples, sample].slice(-SAMPLES_CAP) }, "samples");
   }
 
   labelSample(sampleId: string, label: CaptureSample["label"]): void {
     this.setState({
       samples: this.state.samples.map((s) => (s.id === sampleId ? { ...s, label } : s)),
-    });
+    }, "samples");
   }
 
   deleteSample(sampleId: string): void {
-    this.setState({ samples: this.state.samples.filter((s) => s.id !== sampleId) });
+    this.setState({ samples: this.state.samples.filter((s) => s.id !== sampleId) }, "samples");
   }
 
   clearSamples(): void {
-    this.setState({ samples: [] });
+    this.setState({ samples: [] }, "samples");
     this.log("info", "parsing", "Captured notification samples cleared");
   }
 
@@ -653,7 +735,7 @@ class RideStore {
   // -- Voice alerts ---------------------------------------------------------
 
   setVoiceAlerts(on: boolean): void {
-    this.setState({ voiceAlertsOn: on });
+    this.setState({ voiceAlertsOn: on }, "voice");
     this.log("info", "system", on ? "Spoken ride alerts enabled" : "Spoken ride alerts disabled");
   }
 

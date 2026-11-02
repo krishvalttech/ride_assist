@@ -89,4 +89,29 @@ describe("platform parsers", () => {
     expect(parsed.isRideRequest).toBe(false);
     expect(parsed.fare).toBeUndefined();
   });
+
+  it("distinguishes cancelled rides and never treats them as offers", () => {
+    const parsed = parseRideNotification("rapido", texts("Ride cancelled", "Ride request cancelled by customer — Booking #8492"));
+    expect(parsed.isRideRequest).toBe(false);
+    expect(parsed.confidence).toBe(0);
+  });
+
+  it("distinguishes completed trips and payment receipts from offers", () => {
+    const parsed = parseRideNotification("uber", texts("Trip completed", "Trip ended — ₹280 payment received from rider"));
+    expect(parsed.isRideRequest).toBe(false);
+  });
+
+  it("distinguishes promotional incentives and bonuses from offers", () => {
+    const parsed = parseRideNotification("ola", texts("Weekly incentive", "Earn extra ₹500 bonus by completing 20 rides"));
+    expect(parsed.isRideRequest).toBe(false);
+  });
+
+  it("extracts Hindi/regional currency and distance notations", () => {
+    const parsed = parseRideNotification("rapido", texts("New ride request", "Ride request — रु. 195 · Pickup 2.5 किमी · Auto"));
+    expect(parsed.isRideRequest).toBe(true);
+    expect(parsed.fare).toBe(195);
+    expect(parsed.pickupDistanceKm).toBe(2.5);
+    expect(parsed.category).toBe("auto");
+    expect(parsed.parserVersion).toBeDefined();
+  });
 });
